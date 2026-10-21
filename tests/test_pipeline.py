@@ -18,8 +18,7 @@ def test_splitter_streams_sentences():
         out += s.feed(tok)
     out += s.flush()
     # the first chunk ends at the first pause so speech can start early
-    # ("traveller." alone is too short, so it joins the next sentence)
-    assert out == ["Hello there,", "traveller. Dr. Smith was here at 3.5 o'clock!", "And then?"]
+    assert out == ["Hello there,", "traveller.", "Dr. Smith was here at 3.5 o'clock!", "And then?"]
 
 
 def test_think_filter_handles_split_tags():
@@ -82,24 +81,24 @@ def test_splitter_starts_early_on_first_clause():
     for tok in ["Ah, the library, my dear visitor, ", "is where the old books whisper. ", "Come", " and see."]:
         out += s.feed(tok)
     out += s.flush()
-    # The first chunk is cut at a comma so speech can start right away;
-    # a very short first clause ("Ah,") stays attached.
-    assert out == ["Ah, the library,", "my dear visitor, is where the old books whisper.", "Come and see."]
+    # The first two chunks are cut at the first pause so speech can start right
+    # away; a very short first clause ("Ah,") stays attached.
+    assert out == ["Ah, the library,", "my dear visitor,", "is where the old books whisper.", "Come and see."]
 
 
-def test_splitter_first_chunk_without_pause_cuts_at_word():
+def test_splitter_early_chunks_without_pause_cut_after_words():
     s = SentenceSplitter()
     words = "Well then I suppose the oldest thing in this house would have to be the clock in the hall".split()
     out = []
     for w in words:
         out += s.feed(w + " ")
-    assert out and len(out[0]) <= 70 and not out[0].endswith(" ")
+    assert out[:2] == ["Well then I suppose", "the oldest thing in this house would have"]
     assert " ".join(out + s.flush()) == " ".join(words)
 
 
 def test_splitter_cuts_long_sentences_at_clauses():
     s = SentenceSplitter()
-    s.emitted = 1  # not the first chunk
+    s.emitted = 2  # past the early chunks
     long = ("The portrait of my late wife hung in the east wing for many years, "
             "until the great storm of the winter tore the roof clean away.")
     out = []
@@ -119,7 +118,8 @@ def test_text_turn_streams_sentences_and_audio():
         ws.send_json({"type": "text", "text": "Who are you?"})
         msgs = receive_until_done(ws)
         speech = [m for m in msgs if m["type"] == "speech"]
-        assert [m["text"] for m in speech] == ["I am the old headmaster.", "I like sweets very much."]
+        # speech starts after the first few words, then follows the sentences
+        assert [m["text"] for m in speech] == ["I am the old", "headmaster.", "I like sweets very much."]
         assert base64.b64decode(speech[0]["audio"]).startswith(b"RIFF")
         assert "hmm" not in msgs[-1]["text"]          # hidden reasoning never leaks
         assert msgs[-1]["text"] == "I am the old headmaster. I like sweets very much."

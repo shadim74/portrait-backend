@@ -14,17 +14,19 @@ MIN_CHARS = 12  # avoid sending tiny fragments like "Ah." alone to TTS
 class SentenceSplitter:
     """Feed streamed tokens in, get speakable chunks out.
 
-    Chunks are normally whole sentences. To start talking sooner, the first
-    chunk of a reply ends at the first sentence or clause break after
-    `first_min` chars (or, with no break by `first_max` chars, at a word
-    break). Any later sentence that grows past `long_len` chars is cut at a
-    clause break after `long_min` chars.
+    To start talking almost as soon as the text appears, the first chunks of a
+    reply are tiny: each ends at the first pause (sentence end, comma, dash)
+    after `first_min` chars, or simply after a few complete words
+    (`early_words`: 4 words for the first chunk, 8 for the second) if no pause
+    comes. The voice of chunk 1 plays while chunk 2 is generated, and so on.
+    After that, chunks are whole sentences; a sentence that grows past
+    `long_len` chars is cut at a clause break after `long_min` chars.
     """
 
-    def __init__(self, first_min: int = 10, first_max: int = 60, long_len: int = 110, long_min: int = 40):
+    def __init__(self, first_min: int = 10, early_words: tuple = (4, 8), long_len: int = 110, long_min: int = 40):
         self.buffer = ""
         self.emitted = 0
-        self.first_min, self.first_max = first_min, first_max
+        self.first_min, self.early_words = first_min, early_words
         self.long_len, self.long_min = long_len, long_min
 
     def feed(self, text: str) -> list[str]:
@@ -34,7 +36,7 @@ class SentenceSplitter:
         for m in _SENTENCE_END.finditer(self.buffer):
             candidate = self.buffer[start:m.end()].strip()
             last_word = candidate.split()[-1].lower() if candidate else ""
-            min_chars = self.first_min if self.emitted + len(chunks) == 0 else MIN_CHARS
+            min_chars = self.first_min if self.emitted + len(chunks) < len(self.early_words) else MIN_CHARS
             if last_word in _ABBREVIATIONS or len(candidate) < min_chars:
                 continue  # keep accumulating
             chunks.append(candidate)
@@ -47,7 +49,8 @@ class SentenceSplitter:
     def _clauses(self) -> list[str]:
         out = []
         while True:
-            if self.emitted == 0:
+            early = self.emitted < len(self.early_words)
+            if early:
                 min_pos = self.first_min
             elif len(self.buffer) >= self.long_len:
                 min_pos = self.long_min
@@ -56,14 +59,23 @@ class SentenceSplitter:
             m = next((m for m in _CLAUSE_END.finditer(self.buffer) if m.start() >= min_pos), None)
             if m:
                 cut = m.end()
-            elif self.emitted == 0 and len(self.buffer) >= self.first_max and " " in self.buffer.strip():
-                cut = self.buffer.rstrip().rfind(" ") + 1   # no pause yet: cut at the last word break
+            elif early and (cut := self._after_words(self.early_words[self.emitted])):
+                pass                                    # no pause yet: cut after N whole words
             else:
                 break
             out.append(self.buffer[:cut].strip())
             self.buffer = self.buffer[cut:]
             self.emitted += 1
         return out
+
+    def _after_words(self, n: int) -> int:
+        """Index just after the n-th complete word (one followed by a space), or 0."""
+        count = 0
+        for m in re.finditer(r"\S+\s+", self.buffer):
+            count += 1
+            if count == n:
+                return m.end()
+        return 0
 
     def flush(self) -> list[str]:
         rest = self.buffer.strip()
