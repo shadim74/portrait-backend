@@ -21,9 +21,33 @@ const VISEMES = Object.keys(VISEME_MORPH);
 // How much the jaw drops for each mouth shape, on top of the shape itself.
 const JAW = { aa: .2, O: .18, E: .15, I: .08, U: .1, RR: .08, CH: .05, kk: .1, DD: .06, nn: .05, TH: .05 };
 const FALLBACK_CYCLE = ['aa', 'O', 'E', 'I', 'U', 'DD'];
+// Facial expressions (ARKit blend shapes, 0..1), blended smoothly on top of
+// everything else. The server tags each spoken piece with one of these.
+const EXPRESSIONS = {
+  neutral:   { AK_44_MouthSmileLeft: .12, AK_45_MouthSmileRight: .12, AK_19_EyeSquintLeft: .15, AK_20_EyeSquintRight: .15 },
+  happy:     { AK_44_MouthSmileLeft: .9, AK_45_MouthSmileRight: .9, AU_12_LipCornerPuller: .55, AU_06_CheekRaiser: .5,
+               AK_07_CheekSquintLeft: .4, AK_08_CheekSquintRight: .4, AK_19_EyeSquintLeft: .2, AK_20_EyeSquintRight: .2,
+               AU_25_LipsPart: .2 },
+  sad:       { AU_01_InnerBrowRaiser: .8, AK_03_BrowInnerUp: .5, AU_15_LipCornerDepressor: .75, AK_30_MouthFrownLeft: .5,
+               AK_31_MouthFrownRight: .5, AU_17_ChinRaiser: .35, AU_41_LidDroop: .35,
+               AK_11_EyeLookDownLeft: .15, AK_12_EyeLookDownRight: .15 },
+  surprised: { AU_01_InnerBrowRaiser: .9, AU_02_OuterBrowRaiser: .9, AK_03_BrowInnerUp: .6, AK_04_BrowOuterUpLeft: .7,
+               AK_05_BrowOuterUpRight: .7, AU_05_UpperLidRaiser: .8, AK_21_EyeWideLeft: .6, AK_22_EyeWideRight: .6,
+               AU_26_JawDrop: .25, AU_25_LipsPart: .4 },
+  angry:     { AU_04_BrowLowerer: .8, AK_01_BrowDownLeft: .5, AK_02_BrowDownRight: .5, AU_07_LidTightener: .25,
+               AU_09_NoseWrinkler: .35, AU_23_LipTightener: .5, AU_24_LipPressor: .3, AK_30_MouthFrownLeft: .3,
+               AK_31_MouthFrownRight: .3 },
+  thinking:  { AU_04_BrowLowerer: .35, AK_05_BrowOuterUpRight: .5, AK_36_MouthPressLeft: .45, AK_33_MouthLeft: .3,
+               AU_17_ChinRaiser: .25, AK_17_EyeLookUpLeft: .35, AK_18_EyeLookUpRight: .35,
+               AK_15_EyeLookOutLeft: .3, AK_14_EyeLookInRight: .3 },
+};
+// Head posture for each expression: [nod down, turn, tilt] in radians.
+const POSTURE = { neutral: [0, 0, 0], happy: [-.03, 0, .03], sad: [.08, 0, -.02], surprised: [-.05, 0, 0],
+                  angry: [.03, 0, 0], thinking: [-.02, .06, .07] };
+const EXPRESSION_HOLD_MS = 3500;   // after speaking, keep the last expression this long
 const LEAD = .04;             // the mouth moves a little before the sound is heard
 
-export async function mountAvatar(container, frame, model) {
+export async function mountAvatar(container, frame, model, restingMood = 'neutral') {
   const base = model.url.slice(0, model.url.lastIndexOf('/') + 1);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -147,6 +171,15 @@ export async function mountAvatar(container, frame, model) {
   const visW = Object.fromEntries(VISEMES.map(v => [v, 0]));
   let jaw = 0, fbIdx = 0, fbT = 0;
 
+  // expression state: one weight per expression, eased toward the current one
+  let resting = EXPRESSIONS[restingMood] ? restingMood : 'neutral';
+  let emotion = resting, lastExpressed = 0;
+  const exprW = Object.fromEntries(Object.keys(EXPRESSIONS).map(e => [e, e === emotion ? 1 : 0]));
+
+  // All face drivers add into this per frame; it is written to the mesh once.
+  const face = new Map(), touched = new Set();
+  const add = (name, v) => { face.set(name, (face.get(name) || 0) + v); touched.add(name); };
+
   // face state
   let nextBlink = performance.now() + 1500, blinkStart = -1, doubleBlink = false;
   let gaze = { x: 0, y: 0 }, gazeTarget = { x: 0, y: 0 }, nextGaze = 0;
@@ -193,19 +226,27 @@ export async function mountAvatar(container, frame, model) {
     for (const v of VISEMES) {
       // open quickly, close a bit slower: looks like real articulation
       visW[v] = approach(visW[v], targets[v], targets[v] > visW[v] ? 30 : 18, dt);
-      morph(VISEME_MORPH[v], visW[v]);
+      add(VISEME_MORPH[v], visW[v]);
     }
     jaw = approach(jaw, jawTarget, 20, dt);
-    morph('AK_25_JawOpen', jaw);
+    add('AK_25_JawOpen', jaw);
 
-    // Expression: faint polite smile, eyebrows lift on loud syllables.
-    morph('AK_44_MouthSmileLeft', .16); morph('AK_45_MouthSmileRight', .16);
-    morph('AK_19_EyeSquintLeft', .2); morph('AK_20_EyeSquintRight', .2);
+    // Expression: ease toward the current one; drift back to the resting mood
+    // a few seconds after he stops talking.
+    if (!talking && emotion !== resting && now - lastExpressed > EXPRESSION_HOLD_MS) emotion = resting;
+    const posture = [0, 0, 0];
+    for (const [e, preset] of Object.entries(EXPRESSIONS)) {
+      exprW[e] = approach(exprW[e], e === emotion ? 1 : 0, 4, dt);
+      if (exprW[e] < .002) continue;
+      for (const [name, v] of Object.entries(preset)) add(name, v * exprW[e]);
+      POSTURE[e].forEach((v, i) => { posture[i] += v * exprW[e]; });
+    }
+    // Eyebrows lift on loud syllables.
     const onset = Math.max(0, loud - prevMouth); prevMouth = loud;
     if (speaking && onset > .18 && Math.random() < .35) brow = Math.min(1, brow + .7);
     brow = approach(brow, 0, 2.2, dt);
-    morph('AK_03_BrowInnerUp', brow * .55);
-    morph('AK_04_BrowOuterUpLeft', brow * .45); morph('AK_05_BrowOuterUpRight', brow * .45);
+    add('AK_03_BrowInnerUp', brow * .55);
+    add('AK_04_BrowOuterUpLeft', brow * .45); add('AK_05_BrowOuterUpRight', brow * .45);
 
     // Blinks: every 2-6 s, sometimes double, and more often while talking.
     if (now > nextBlink && blinkStart < 0) blinkStart = now;
@@ -219,7 +260,7 @@ export async function mountAvatar(container, frame, model) {
         else { doubleBlink = false; nextBlink = now + (talking ? 1500 : 2200) + Math.random() * 3800; }
       }
     }
-    morph('AK_09_EyeBlinkLeft', lid); morph('AK_10_EyeBlinkRight', lid);
+    add('AK_09_EyeBlinkLeft', lid); add('AK_10_EyeBlinkRight', lid);
 
     // Eyes: mostly on the visitor, with small glances; looks aside to "think".
     if (now > nextGaze) {
@@ -231,16 +272,19 @@ export async function mountAvatar(container, frame, model) {
       nextGaze = now + (away ? 600 + Math.random() * 900 : 1200 + Math.random() * 2500);
     }
     gaze.x = approach(gaze.x, gazeTarget.x, 22, dt); gaze.y = approach(gaze.y, gazeTarget.y, 22, dt);
-    morph('AK_15_EyeLookOutLeft', Math.max(0, gaze.x) * .7); morph('AK_14_EyeLookInRight', Math.max(0, gaze.x) * .7);
-    morph('AK_13_EyeLookInLeft', Math.max(0, -gaze.x) * .7); morph('AK_16_EyeLookOutRight', Math.max(0, -gaze.x) * .7);
-    morph('AK_11_EyeLookDownLeft', Math.max(0, gaze.y) * .6); morph('AK_12_EyeLookDownRight', Math.max(0, gaze.y) * .6);
-    morph('AK_17_EyeLookUpLeft', Math.max(0, -gaze.y) * .6); morph('AK_18_EyeLookUpRight', Math.max(0, -gaze.y) * .6);
+    add('AK_15_EyeLookOutLeft', Math.max(0, gaze.x) * .7); add('AK_14_EyeLookInRight', Math.max(0, gaze.x) * .7);
+    add('AK_13_EyeLookInLeft', Math.max(0, -gaze.x) * .7); add('AK_16_EyeLookOutRight', Math.max(0, -gaze.x) * .7);
+    add('AK_11_EyeLookDownLeft', Math.max(0, gaze.y) * .6); add('AK_12_EyeLookDownRight', Math.max(0, gaze.y) * .6);
+    add('AK_17_EyeLookUpLeft', Math.max(0, -gaze.y) * .6); add('AK_18_EyeLookUpRight', Math.max(0, -gaze.y) * .6);
 
     // Head: a springy nod on stressed syllables, and follows the gaze a bit.
     if (speaking && onset > .15) nodVel += onset * 2.2;
     nodVel += (-nod * 60 - nodVel * 9) * dt; nod += nodVel * dt;
-    addTurn(head, nod * .12 + gaze.y * .05, gaze.x * .12, 0);
+    addTurn(head, nod * .12 + gaze.y * .05 + posture[0], gaze.x * .12 + posture[1], posture[2]);
     addTurn(neck, nod * .05, gaze.x * .05, 0);
+
+    for (const name of touched) morph(name, Math.min(1, face.get(name) || 0));
+    face.clear();
 
     renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);
@@ -252,6 +296,10 @@ export async function mountAvatar(container, frame, model) {
     speak(el, visemes) { audio = el; timeline = visemes || null; tlIdx = 0; },
     /** Speech stopped or interrupted. */
     silence() { audio = null; timeline = null; },
+    /** Show a facial expression: neutral, happy, sad, surprised, angry, thinking. */
+    express(e) { if (EXPRESSIONS[e]) { emotion = e; lastExpressed = performance.now(); } },
+    /** The expression he goes back to when quiet. */
+    setRestingMood(e) { if (EXPRESSIONS[e]) resting = e; },
     dispose() {
       cancelAnimationFrame(raf); ro.disconnect(); mixer.stopAllAction();
       renderer.dispose(); renderer.domElement.remove(); container.classList.remove('has-model');

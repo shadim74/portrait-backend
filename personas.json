@@ -6,7 +6,8 @@
     "voice": "bm_george",
     "portrait": "portraits/headmaster.svg",
     "greeting": "Oh, hello there! Come closer, I don't bite. What's your name?",
-    "welcome_back": "Hey, you're back! I was hoping you'd come by again."
+    "welcome_back": "Hey, you're back! I was hoping you'd come by again.",
+    "mood": "happy"
   },
   {
     "id": "butler",
@@ -29,7 +30,8 @@
       },
       "animations": "animations.json"
     },
-    "welcome_back": "Oh hey, welcome back. Good to see you again."
+    "welcome_back": "Oh hey, welcome back. Good to see you again.",
+    "mood": "neutral"
   },
   {
     "id": "lady",
@@ -38,6 +40,7 @@
     "voice": "bf_emma",
     "portrait": "portraits/lady.svg",
     "greeting": "Hi. Not many people stop at my painting. What made you stop?",
-    "welcome_back": "You came back. I'm glad, honestly."
+    "welcome_back": "You came back. I'm glad, honestly.",
+    "mood": "sad"
   }
 ]

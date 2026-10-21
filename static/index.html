@@ -135,7 +135,7 @@ async function showPersona(p) {
     $('noimg').textContent = 'Loading…'; $('noimg').hidden = false;
     try {
       const { mountAvatar } = await import('/static/avatar3d.js');
-      const a = await mountAvatar(art, $('frame'), p.model);
+      const a = await mountAvatar(art, $('frame'), p.model, p.mood);
       if (shownId === p.id) avatar3d = a; else a.dispose();
       $('noimg').hidden = true;
     } catch (e) {
@@ -264,6 +264,7 @@ function playNext() {
     if (audioCtx) { try { audioCtx.createMediaElementSource(current).connect(analyser); } catch {} }
     current.onended = playNext;
     avatar3d?.speak(current, m.visemes);   // 3D lips follow the mouth-shape timeline
+    if (m.emotion) avatar3d?.express(m.emotion);   // smile, frown... for this piece
     current.play().catch(playNext);
     animateLevel();
   }

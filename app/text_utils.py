@@ -125,6 +125,59 @@ class ThinkFilter:
         return rest
 
 
+EMOTIONS = ("neutral", "happy", "sad", "surprised", "angry", "thinking")
+_EMOTION_ALIASES = {"smile": "happy", "smiling": "happy", "amused": "happy", "laughing": "happy",
+                    "excited": "happy", "joyful": "happy", "warm": "happy", "playful": "happy",
+                    "unhappy": "sad", "wistful": "sad", "melancholy": "sad", "upset": "sad",
+                    "shocked": "surprised", "surprise": "surprised", "curious": "thinking",
+                    "thoughtful": "thinking", "pensive": "thinking", "annoyed": "angry",
+                    "irritated": "angry", "mad": "angry", "calm": "neutral"}
+_TAG = re.compile(r"\[\s*([A-Za-z]+)\s*\]\s*")
+
+
+class EmotionFilter:
+    """Pulls [happy]-style mood tags out of a token stream.
+
+    feed() returns the text without tags; `self.current` is the latest mood
+    seen. Unknown words in brackets are dropped too (never spoken). A "[" at
+    the end of a token is held back until we know whether it's a tag.
+    """
+
+    MAX_TAG = 14
+
+    def __init__(self, default: str = "neutral"):
+        self.current = default
+        self.pending = ""
+
+    def feed(self, text: str) -> str:
+        self.pending += text
+        out = []
+        while self.pending:
+            m = _TAG.search(self.pending)
+            if m:
+                out.append(self.pending[:m.start()])
+                word = m.group(1).lower()
+                word = _EMOTION_ALIASES.get(word, word)
+                if word in EMOTIONS:
+                    self.current = word
+                self.pending = self.pending[m.end():]
+                continue
+            # Hold back a possible unfinished tag at the end.
+            i = self.pending.rfind("[")
+            if i >= 0 and "]" not in self.pending[i:] and len(self.pending) - i <= self.MAX_TAG:
+                out.append(self.pending[:i])
+                self.pending = self.pending[i:]
+            else:
+                out.append(self.pending)
+                self.pending = ""
+            break
+        return "".join(out)
+
+    def flush(self) -> str:
+        rest, self.pending = self.pending, ""
+        return rest
+
+
 def clean_for_speech(text: str) -> str:
     """Strip markdown and emoji-ish symbols the TTS would read literally."""
     text = re.sub(r"[*_`#>]+", "", text)

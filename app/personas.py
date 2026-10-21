@@ -11,6 +11,10 @@ SPEECH_RULES = (
     "contractions, everyday words. Never use old-fashioned words like sir, madam, "
     "indeed, alas, pray, thee or 'I must say'. Ask the visitor things back now and then. "
     "No lists, no markdown, no emoji, no stage directions. "
+    "Start every reply with your facial expression in square brackets, one of "
+    "[neutral] [happy] [sad] [surprised] [angry] [thinking], for example: "
+    "\"[happy] Oh, I love that question!\" If your feeling changes later in the reply, put a "
+    "new tag right before that sentence. The tags are your face, never spoken. "
     "Stay in character. /no_think"  # /no_think turns off Qwen3's slow reasoning mode
 )
 
@@ -24,6 +28,7 @@ class Persona:
     portrait: str = ""
     greeting: str = ""
     welcome_back: str = ""   # said instead of the greeting to a returning visitor
+    mood: str = "neutral"    # resting facial expression (see text_utils.EMOTIONS)
     # Optional, for PNG/JPG portraits: where the mouth is, in % of the image,
     # e.g. {"x": 44, "y": 55, "w": 12, "h": 9}. The page moves that area as a jaw.
     mouth: dict | None = None

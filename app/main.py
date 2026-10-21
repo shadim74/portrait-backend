@@ -15,7 +15,8 @@ Server -> client (JSON):
   {"type": "transcription", "text": "..."}            # what we heard
   {"type": "token",         "text": "..."}            # live reply text
   {"type": "speech", "index": 0, "text": "...", "audio": "<base64 wav>", "video": "<base64 mp4>|null",
-   "visemes": [[seconds, "aa"], ...]|null}          # mouth shapes for 3D lip-sync
+   "visemes": [[seconds, "aa"], ...]|null,          # mouth shapes for 3D lip-sync
+   "emotion": "neutral|happy|sad|surprised|angry|thinking"}   # facial expression
   {"type": "done",          "text": "<full reply>"}
   {"type": "interrupted"}
   {"type": "error",         "message": "..."}
@@ -41,7 +42,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .history import HistoryStore, valid_visitor
 from .personas import Conversation, Persona, load_personas
-from .text_utils import SentenceSplitter, ThinkFilter, clean_for_speech
+from .text_utils import EmotionFilter, SentenceSplitter, ThinkFilter, clean_for_speech
 
 log = logging.getLogger("portrait")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -65,7 +66,7 @@ def persona_info(p: Persona) -> dict:
     if p.model and (url := asset_url(p.model.get("file", ""))):
         model = {**p.model, "url": url}
     return {"id": p.id, "name": p.name, "greeting": p.greeting,
-            "portrait": asset_url(p.portrait), "mouth": p.mouth, "model": model}
+            "portrait": asset_url(p.portrait), "mouth": p.mouth, "model": model, "mood": p.mood}
 
 
 @dataclass
@@ -158,7 +159,7 @@ class Session:
         async with self.locks[lock_name]:
             return await asyncio.to_thread(fn, *args)
 
-    async def speak(self, index: int, text: str):
+    async def speak(self, index: int, text: str, emotion: str | None = None):
         persona = self.conv.persona
         tts = self.engines.tts
         if hasattr(tts, "synthesize_timed"):   # also returns mouth shapes for 3D lip-sync
@@ -171,13 +172,15 @@ class Session:
             audio=base64.b64encode(wav).decode(),
             video=base64.b64encode(video).decode() if video else None,
             visemes=visemes,
+            emotion=emotion or self.conv.persona.mood,
         )
 
     async def reply(self, user_text: str):
         """LLM -> sentences -> TTS (+ lip-sync), running concurrently."""
         started = time.perf_counter()
-        sentences: asyncio.Queue[str | None] = asyncio.Queue()
-        full_reply: list[str] = []
+        sentences: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+        full_reply: list[str] = []   # what the visitor sees and hears
+        raw_reply: list[str] = []    # with [mood] tags, kept in the LLM's own context
 
         messages = self.conv.messages_for(user_text)
         self.save("user", user_text)
@@ -185,31 +188,35 @@ class Session:
         async def produce():
             splitter = SentenceSplitter()
             think = ThinkFilter()  # hidden reasoning must never be spoken
+            mood = EmotionFilter(self.conv.persona.mood)   # [happy] tags -> facial expression
 
-            async def emit(text: str):
+            async def emit(raw: str, final: bool = False):
+                raw_reply.append(raw)
+                text = mood.feed(raw) + (mood.flush() if final else "")
                 if not text:
                     return
                 full_reply.append(text)
                 await self.send(type="token", text=text)
                 for s in splitter.feed(text):
-                    await sentences.put(s)
+                    await sentences.put((s, mood.current))
 
             try:
                 async for token in self.engines.llm.stream(messages):
                     await emit(think.feed(token))
-                await emit(think.flush())
+                await emit(think.flush(), final=True)
                 for s in splitter.flush():
-                    await sentences.put(s)
+                    await sentences.put((s, mood.current))
             finally:
                 await sentences.put(None)
 
         async def consume():
             index = 0
-            while (sentence := await sentences.get()) is not None:
+            while (item := await sentences.get()) is not None:
+                sentence, emotion = item
                 spoken = clean_for_speech(sentence)
                 if not spoken:
                     continue
-                await self.speak(index, spoken)
+                await self.speak(index, spoken, emotion)
                 if index == 0:
                     log.info("first audio after %.0f ms", (time.perf_counter() - started) * 1000)
                 index += 1
@@ -219,7 +226,7 @@ class Session:
         finally:
             # Remember what was said, even if the visitor interrupted midway.
             said = "".join(full_reply).strip()
-            self.conv.add_reply(said)
+            self.conv.add_reply("".join(raw_reply).strip())   # keeps tags, so the LLM keeps using them
             self.save("assistant", said)
         await self.send(type="done", text="".join(full_reply).strip())
 

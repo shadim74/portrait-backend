@@ -142,6 +142,12 @@ Three.js by `static/avatar3d.js`:
 - **Body and hands:** motion-captured Rocketbox clips in
   `portraits/models/butler/animations.json`: idle breathing while listening,
   talking gestures while speaking, sometimes a nod afterwards.
+- **Expressions:** the LLM starts each reply (and any change of feeling)
+  with a tag like `[happy]`, `[sad]`, `[surprised]`, `[angry]` or
+  `[thinking]`. The server strips the tags (they're never shown or spoken)
+  and sends the mood with each speech piece; the face blends into it as that
+  piece plays, then relaxes to the character's resting `mood` from
+  `personas.json` a few seconds after he stops talking.
 - **Face:** natural blinking (sometimes double), small eye movements and
   glances aside, eyebrow lifts and head nods on stressed syllables, and a
   half-asleep look when disconnected. Any other Rocketbox avatar works the same

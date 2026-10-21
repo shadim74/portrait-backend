@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.history import HistoryStore
 from app.main import Engines, app
 from app.personas import Persona
-from app.text_utils import SentenceSplitter, ThinkFilter, clean_for_speech
+from app.text_utils import EmotionFilter, SentenceSplitter, ThinkFilter, clean_for_speech
 
 
 # ---------- pure helpers ----------
@@ -28,6 +28,19 @@ def test_think_filter_handles_split_tags():
     assert text == "Hello world"
 
 
+def test_emotion_filter_strips_tags_even_when_split():
+    f = EmotionFilter()
+    out = "".join(f.feed(t) for t in ["[hap", "py] Oh, hello! ", "That's sad [s", "ad] news.", " [blah] Ok"]) + f.flush()
+    assert out == "Oh, hello! That's sad news. Ok"
+    assert f.current == "sad"
+
+
+def test_emotion_filter_aliases_and_plain_brackets():
+    f = EmotionFilter("happy")
+    assert f.feed("[Wistful] Hmm.") == "Hmm." and f.current == "sad"
+    assert f.feed(" a [very long bracketed aside] b") == " a [very long bracketed aside] b"
+
+
 def test_clean_for_speech():
     assert clean_for_speech("**Ah** _yes_ 🙂 see [this](http://x)") == "Ah yes see this"
 
@@ -39,12 +52,16 @@ class FakeSTT:
         return "who are you"
 
 
+DEFAULT_TOKENS = ["<think>hmm</think>", "I am the old ", "headmaster. ", "I like ", "sweets very much."]
+
+
 class FakeLLM:
-    def __init__(self, delay=0.0):
+    def __init__(self, delay=0.0, tokens=None):
         self.delay = delay
+        self.tokens = tokens or DEFAULT_TOKENS
 
     async def stream(self, messages):
-        for tok in ["<think>hmm</think>", "I am the old ", "headmaster. ", "I like ", "sweets very much."]:
+        for tok in self.tokens:
             await asyncio.sleep(self.delay)
             yield tok
 
@@ -59,8 +76,8 @@ class FakeLipSync:
         return None
 
 
-def make_client(llm_delay=0.0):
-    app.state.engines = Engines(stt=FakeSTT(), llm=FakeLLM(llm_delay), tts=FakeTTS(), lipsync=FakeLipSync())
+def make_client(llm_delay=0.0, tokens=None):
+    app.state.engines = Engines(stt=FakeSTT(), llm=FakeLLM(llm_delay, tokens), tts=FakeTTS(), lipsync=FakeLipSync())
     app.state.personas = {"headmaster": Persona(id="headmaster", name="Headmaster",
                                                 system_prompt="You are a headmaster.",
                                                 greeting="Welcome, visitor!",
@@ -200,3 +217,17 @@ def test_no_visitor_id_means_nothing_saved():
             ws.send_json({"type": "text", "text": "Hi"})
             receive_until_done(ws)
         assert client.app.state.history.recent("", "headmaster") == []
+
+
+# ---------- facial expressions ----------
+
+def test_speech_carries_emotion_and_tags_are_hidden():
+    tokens = ["[happy] Oh, what a ", "lovely question! ", "[sad] But I ", "miss the old days."]
+    with make_client(tokens=tokens) as client, client.websocket_connect("/ws/headmaster") as ws:
+        ws.receive_json(); receive_until_done(ws)
+        ws.send_json({"type": "text", "text": "How are you?"})
+        msgs = receive_until_done(ws)
+        speech = [(m["text"], m["emotion"]) for m in msgs if m["type"] == "speech"]
+        assert speech[0][1] == "happy" and speech[-1] == ("But I miss the old days.", "sad")
+        shown = "".join(m["text"] for m in msgs if m["type"] == "token")
+        assert "[" not in shown and msgs[-1]["text"] == "Oh, what a lovely question! But I miss the old days."
