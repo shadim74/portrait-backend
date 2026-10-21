@@ -10,6 +10,7 @@
 // Loaded only when a persona has a "model" in personas.json.
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const MORPH_PREFIX = 'blendShape1.';
 const VISEME_MORPH = {
@@ -24,7 +25,7 @@ const FALLBACK_CYCLE = ['aa', 'O', 'E', 'I', 'U', 'DD'];
 // Facial expressions (ARKit blend shapes, 0..1), blended smoothly on top of
 // everything else. The server tags each spoken piece with one of these.
 const EXPRESSIONS = {
-  neutral:   { AK_44_MouthSmileLeft: .12, AK_45_MouthSmileRight: .12, AK_19_EyeSquintLeft: .15, AK_20_EyeSquintRight: .15 },
+  neutral:   { AK_44_MouthSmileLeft: .12, AK_45_MouthSmileRight: .12, AK_19_EyeSquintLeft: .04, AK_20_EyeSquintRight: .04 },
   happy:     { AK_44_MouthSmileLeft: .9, AK_45_MouthSmileRight: .9, AU_12_LipCornerPuller: .55, AU_06_CheekRaiser: .5,
                AK_07_CheekSquintLeft: .4, AK_08_CheekSquintRight: .4, AK_19_EyeSquintLeft: .2, AK_20_EyeSquintRight: .2,
                AU_25_LipsPart: .2 },
@@ -46,6 +47,36 @@ const POSTURE = { neutral: [0, 0, 0], happy: [-.03, 0, .03], sad: [.08, 0, -.02]
                   angry: [.03, 0, 0], thinking: [-.02, .06, .07] };
 const EXPRESSION_HOLD_MS = 3500;   // after speaking, keep the last expression this long
 const LEAD = .04;             // the mouth moves a little before the sound is heard
+
+// Make the eyeballs glossy (wet-looking) without making the skin shiny: paint
+// a roughness map for the head material that is low only where the eyeball
+// triangles (the vertices moved by the eye bones) sit in the texture.
+function glossyEyes(mesh) {
+  const mats = [].concat(mesh.material);
+  const headIndex = mats.findIndex(m => m.name.includes('head'));
+  const bones = mesh.skeleton?.bones || [];
+  const eyeBones = new Set(['Bip01_LEye', 'Bip01_REye'].map(n => bones.findIndex(b => b.name === n)).filter(i => i >= 0));
+  const g = mesh.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, uv = g.attributes.uv;
+  if (headIndex < 0 || !eyeBones.size || !si || !uv) return;
+  const isEye = i => { for (let k = 0; k < 4; k++) if (eyeBones.has(si.getComponent(i, k)) && sw.getComponent(i, k) > .5) return true; return false; };
+  const size = 512, c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgb(158,158,158)'; ctx.fillRect(0, 0, size, size);      // skin: roughness ~0.62
+  ctx.fillStyle = 'rgb(30,30,30)';                                          // eyes: ~0.12, wet
+  const idx = g.index, groups = g.groups.length ? g.groups : [{ start: 0, count: idx ? idx.count : uv.count, materialIndex: headIndex }];
+  for (const grp of groups) {
+    if (grp.materialIndex !== headIndex) continue;
+    for (let t = grp.start; t < grp.start + grp.count; t += 3) {
+      const v = [0, 1, 2].map(k => idx ? idx.getX(t + k) : t + k);
+      if (!v.every(isEye)) continue;
+      ctx.beginPath();
+      v.forEach((i, k) => { const x = uv.getX(i) * size, y = (1 - uv.getY(i)) * size; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  const m = mats[headIndex];
+  m.roughness = 1; m.roughnessMap = new THREE.CanvasTexture(c); m.needsUpdate = true;
+}
 
 export async function mountAvatar(container, frame, model, restingMood = 'neutral') {
   const base = model.url.slice(0, model.url.lastIndexOf('/') + 1);
@@ -72,7 +103,14 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   const scene = new THREE.Scene();
   // Old-master lighting: warm key from the upper left, cool dim fill, rim light.
   scene.add(new THREE.HemisphereLight(0xffe8c8, 0x201810, 0.55));
-  const key = new THREE.DirectionalLight(0xffd9a8, 2.6); key.position.set(-60, 220, 140); scene.add(key);
+  // key light from the upper left, but not so steep that the eye sockets go dark
+  const key = new THREE.DirectionalLight(0xffd9a8, 2.4); key.position.set(-60, 190, 170); scene.add(key);
+  // soft light from the viewer's side: lifts the eyes and puts a catchlight in them
+  const catchLight = new THREE.DirectionalLight(0xfff4e6, 0.6); scene.add(catchLight);
+  // a dim studio environment, so glossy surfaces (the eyes) reflect something
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.35;
   const fill = new THREE.DirectionalLight(0x9fb2cf, 0.8); fill.position.set(90, 160, 80); scene.add(fill);
   const rim = new THREE.DirectionalLight(0xffe2b0, 1.2); rim.position.set(40, 200, -120); scene.add(rim);
   const camera = new THREE.PerspectiveCamera(22, 4 / 5, 1, 1000);
@@ -101,6 +139,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
       const hair = part === 'opacity';
       return new THREE.MeshStandardMaterial({
         name: m.name, roughness: part === 'body' ? 0.85 : hair ? 0.7 : 0.62, metalness: 0,
+        envMapIntensity: part === 'head' ? 0.8 : 0.4,
         clippingPlanes: clipPlanes, clipIntersection: true,   // hidden only if outside BOTH planes
         map: p.color ? tex(p.color) : null,
         normalMap: p.normal ? tex(p.normal, false) : null,
@@ -110,11 +149,45 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     });
     o.material = mats.length === 1 ? mats[0] : mats;
     if (o.morphTargetDictionary) morphMeshes.push(o);
+    if (o.isSkinnedMesh) glossyEyes(o);
   });
   scene.add(obj);
 
   const bone = name => obj.getObjectByName(name);
   const head = bone('Bip01_Head'), neck = bone('Bip01_Neck');
+
+  // Eye contact: the eyeballs are moved by their own bones. Remember each
+  // eye's rest rotation and which local direction points "forward", so we can
+  // aim them at the viewer every frame (like real people do, even when the
+  // head moves).
+  obj.updateMatrixWorld(true);
+  const eyes = ['Bip01_LEye', 'Bip01_REye'].map(bone).filter(Boolean).map(e => {
+    const wq = e.getWorldQuaternion(new THREE.Quaternion());
+    return { bone: e, rest: e.quaternion.clone(), forward: new THREE.Vector3(0, 0, 1).applyQuaternion(wq.invert()) };
+  });
+  const _eyePos = new THREE.Vector3(), _cur = new THREE.Vector3(), _dir = new THREE.Vector3();
+  const _wq = new THREE.Quaternion(), _pq = new THREE.Quaternion(), _dq = new THREE.Quaternion();
+  const UP = new THREE.Vector3(0, 1, 0), _right = new THREE.Vector3();
+  const aimEyes = (gx, gy) => {
+    obj.updateMatrixWorld(true);
+    for (const e of eyes) {
+      e.bone.quaternion.copy(e.rest);
+      e.bone.updateMatrixWorld(true);
+      e.bone.getWorldPosition(_eyePos);
+      e.bone.getWorldQuaternion(_wq);
+      _cur.copy(e.forward).applyQuaternion(_wq);
+      // look at the camera, turned by the current glance (radians)
+      _dir.subVectors(camera.position, _eyePos).normalize();
+      _right.crossVectors(_dir, UP).normalize();
+      _dir.applyAxisAngle(UP, gx * .5).applyAxisAngle(_right, -gy * .35);
+      // eyes can only turn so far in their sockets
+      const angle = _cur.angleTo(_dir), max = .45;
+      _dq.setFromUnitVectors(_cur, _dir);
+      if (angle > max) _dq.slerp(new THREE.Quaternion(), 1 - max / angle);
+      e.bone.parent.getWorldQuaternion(_pq);
+      e.bone.quaternion.copy(_pq.invert().multiply(_dq.multiply(_wq)));
+    }
+  };
 
   // --- body animation -------------------------------------------------------
   const mixer = new THREE.AnimationMixer(obj);
@@ -157,6 +230,8 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   camera.position.set(look.x, look.y + 8, look.z + (model.distance ?? 275));
   camera.lookAt(look);
   camera.updateMatrixWorld(true);
+  catchLight.position.copy(camera.position).sub(look).normalize().multiplyScalar(100).add(look);
+  catchLight.target.position.copy(look); scene.add(catchLight.target);
   {
     // The plane through the camera and the picture's bottom edge: things above it are kept.
     camera.updateProjectionMatrix();
@@ -285,7 +360,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
 
     // Blinks: every 2-6 s, sometimes double, and more often while talking.
     if (now > nextBlink && blinkStart < 0) blinkStart = now;
-    let lid = idle ? .55 : .1;                       // half-asleep when disconnected
+    let lid = idle ? .55 : .03;                      // half-asleep when disconnected
     if (blinkStart >= 0) {
       const t = (now - blinkStart) / 170;
       lid = Math.max(lid, t < 1 ? Math.sin(t * Math.PI) : 0);
@@ -307,16 +382,13 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
       nextGaze = now + (away ? 600 + Math.random() * 900 : 1200 + Math.random() * 2500);
     }
     gaze.x = approach(gaze.x, gazeTarget.x, 22, dt); gaze.y = approach(gaze.y, gazeTarget.y, 22, dt);
-    add('AK_15_EyeLookOutLeft', Math.max(0, gaze.x) * .7); add('AK_14_EyeLookInRight', Math.max(0, gaze.x) * .7);
-    add('AK_13_EyeLookInLeft', Math.max(0, -gaze.x) * .7); add('AK_16_EyeLookOutRight', Math.max(0, -gaze.x) * .7);
-    add('AK_11_EyeLookDownLeft', Math.max(0, gaze.y) * .6); add('AK_12_EyeLookDownRight', Math.max(0, gaze.y) * .6);
-    add('AK_17_EyeLookUpLeft', Math.max(0, -gaze.y) * .6); add('AK_18_EyeLookUpRight', Math.max(0, -gaze.y) * .6);
 
     // Head: a springy nod on stressed syllables, and follows the gaze a bit.
     if (speaking && onset > .15) nodVel += onset * 2.2;
     nodVel += (-nod * 60 - nodVel * 9) * dt; nod += nodVel * dt;
     addTurn(head, nod * .12 + gaze.y * .05 + posture[0], gaze.x * .12 + posture[1], posture[2]);
     addTurn(neck, nod * .05, gaze.x * .05, 0);
+    aimEyes(gaze.x, gaze.y);                         // eyes on the visitor, after the head has moved
 
     for (const name of touched) morph(name, Math.min(1, face.get(name) || 0));
     face.clear();
@@ -337,6 +409,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     setRestingMood(e) { if (EXPRESSIONS[e]) resting = e; },
     dispose() {
       cancelAnimationFrame(raf); ro.disconnect(); mixer.stopAllAction();
+      scene.environment?.dispose(); pmrem.dispose();
       renderer.dispose(); renderer.domElement.remove(); container.classList.remove('has-model');
       scene.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { m.map?.dispose(); m.normalMap?.dispose(); m.dispose(); }); } });
     },
