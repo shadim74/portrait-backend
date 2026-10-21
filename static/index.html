@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portrait Test Console</title>
+<title>Ashford House</title>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
@@ -11,106 +11,204 @@
 } }
 </script>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; background: #1b1714; color: #eee4d4; }
-  h1 { font-family: Georgia, serif; font-weight: normal; }
-  .row { display: flex; gap: .5rem; margin: .75rem 0; }
-  input, select, button { font: inherit; padding: .5rem .75rem; border-radius: 6px; border: 1px solid #5a4a3a; background: #2a231d; color: inherit; }
+  :root { --ink: #eee4d4; --dim: #a89a86; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e0b09; color: var(--ink); font-family: system-ui, sans-serif; }
+  button, input { font: inherit; padding: .5rem .75rem; border-radius: 6px; border: 1px solid #5a4a3a; background: #2a231dcc; color: inherit; }
   input { flex: 1; min-width: 0; }
   button { cursor: pointer; }
   button.rec { background: #8b2e2e; }
   button:disabled { opacity: .5; cursor: default; }
-  .hf { align-items: center; }
   #handsfree.on { background: #2f5a35; border-color: #4f8a57; }
   #hfstatus.hearing { color: #9ecbff; }
-  #log { background: #120f0d; border: 1px solid #3a3029; border-radius: 6px; padding: 1rem; height: 260px; overflow-y: auto; white-space: pre-wrap; }
   .you { color: #9ecbff; } .them { color: #f0d9a8; } .sys { color: #888; font-size: .9em; }
   .past { opacity: .6; }
 
-  /* --- the portrait --- */
-  .stage { display: flex; flex-direction: column; align-items: center; margin: 1.5rem 0; overflow-x: clip; }
-  .frame {
-    --lvl: 0;                        /* 0..1, set from the voice volume while speaking */
-    --mouth: 0;                      /* 0..1 how open the mouth is, follows the voice closely */
-    position: relative; width: min(280px, 70vw); aspect-ratio: 4 / 5;
-    padding: 18px; border-radius: 4px;
-    background: linear-gradient(135deg, #e3c26b, #8a6420 30%, #f0d590 50%, #7a561a 70%, #d4b05a);
-    box-shadow: inset 0 0 0 3px #4a3410, inset 0 0 0 7px #c9a548, 0 12px 30px #000a,
-                0 0 calc(var(--lvl) * 60px) calc(var(--lvl) * 12px) #f5c86a88;
-    transition: box-shadow 80ms linear;
+  /* ===== the gallery wall ================================================
+     The wall is laid out at "close-up" size; the overview simply scales it
+     down. Walking to a portrait animates the wall's transform. */
+  #viewport { position: fixed; inset: 0; overflow: hidden; }
+  #wall {
+    --slot: 640px; --wall-h: 1180px; --pad: 1100px;
+    position: absolute; left: 0; top: 0; width: calc(var(--slot) * var(--n, 3) + 2 * var(--pad)); height: var(--wall-h);
+    transform-origin: 0 0; transition: transform 1.15s cubic-bezier(.45, .05, .25, 1);
+    /* painted plaster (CC0 texture) tinted a deep heritage green, with faint
+       period wallpaper stripes */
+    background: linear-gradient(#000a, #0000 140px),
+                repeating-linear-gradient(90deg, #ffffff06 0 34px, #0000 34px 52px, #0000000d 52px 54px, #0000 54px 88px),
+                linear-gradient(transparent 70%, #0006),
+                url(/static/gallery/beige_wall_001.jpg) 0 0 / 520px, #4b5a4c;
+    background-blend-mode: normal, normal, normal, multiply, normal;
   }
-  .canvas { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0d0a08; box-shadow: inset 0 0 0 3px #3a2a10; }
-  /* depth: shadow of the frame falling onto the canvas, and a soft varnish sheen */
-  .canvas::after {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    box-shadow: inset 0 0 22px #000b;
-    background: linear-gradient(115deg, transparent 30%, #fff3d81f 45%, #fff3d808 52%, transparent 62%)
-                50% 0 / 260% 100% no-repeat;
-  }
-  .canvas img, .canvas video, .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .art svg { width: 100%; height: 100%; display: block; }
-  .art.has-model { background: radial-gradient(ellipse 70% 60% at 42% 30%, #4a3a24, #1a120b 70%, #0d0906); }
-  .art.has-model { transform: none; animation: none; }
-  /* the 3D canvas sits over the frame so hands can come out of it */
-  .avatar3d { filter: drop-shadow(0 6px 8px #0009); transition: filter .4s; }
-  .frame.idle .avatar3d { filter: drop-shadow(0 6px 8px #0009) brightness(.7) sepia(.35) grayscale(.3); }
-  .art {
-    transform-origin: 50% 70%;
-    transform: scale(calc(1.02 + var(--lvl) * .03)) translateY(calc(var(--lvl) * -4px));
-    filter: brightness(calc(.85 + var(--lvl) * .3)) sepia(.15);
-    transition: transform 80ms linear, filter 80ms linear;
-    animation: breathe 5s ease-in-out infinite;
-  }
-  .frame.idle .art { filter: brightness(.7) sepia(.35) grayscale(.3); }
-  @keyframes breathe { 50% { translate: 0 -2px; scale: 1.008; } }
+  /* the wall continues up into the shadow of the ceiling, so tall screens never see its edge */
+  #wall::before { content: ""; position: absolute; left: 0; right: 0; bottom: calc(100% - 2px); height: 2400px;
+    background: linear-gradient(#060504, #060504 40%, #1d211d 85%, #000a);
+    background-blend-mode: normal; }
+  /* plaster cornice where the wall meets the ceiling */
+  .cornice { position: absolute; left: 0; right: 0; top: -6px; height: 34px;
+    background: linear-gradient(#2c2a24, #6d6a5e 30%, #3f3d35 45%, #85816f 62%, #4a483f 80%, #23221d);
+    box-shadow: 0 8px 14px #000a; }
+  .rail { position: absolute; left: 0; right: 0; top: 120px; height: 16px;   /* picture rail the wires hang from */
+          background: linear-gradient(#0000 0, #0005 100%), url(/static/gallery/dark_wood.jpg) 0 0 / 260px;
+          box-shadow: 0 5px 8px #0007; }
+  .wainscot { position: absolute; left: 0; right: 0; top: 860px; height: 230px;
+    background:
+      repeating-linear-gradient(90deg, #0000 0 300px, #00000055 300px 306px, #ffffff10 306px 309px, #0000 309px 320px),
+      linear-gradient(#0000 0 24px, #0006 24px 30px, #ffffff12 30px 32px, #0000 32px calc(100% - 14px), #0007 calc(100% - 14px)),
+      linear-gradient(#1a0e0699, #1a0e06bb),
+      url(/static/gallery/dark_wood.jpg) 0 0 / 300px;
+    box-shadow: 0 -6px 12px #0006; }
+  .floor { position: absolute; left: -10%; right: -10%; top: 1090px; height: 1400px; transform-origin: top;
+           transform: perspective(700px) rotateX(72deg);
+           background: linear-gradient(#0009, #000c), url(/static/gallery/herringbone_parquet.jpg) 0 0 / 220px; }
 
-  /* Lips on the SVG paintings: class "mouth" opens downward, "lids" blink. */
-  .art .mouth {
-    transform-box: fill-box; transform-origin: 50% 15%;
-    transform: scale(calc(1 - var(--mouth) * .15 + var(--wide, 0) * .2), calc(.1 + var(--mouth) * .9));
+  .slot { position: absolute; top: 0; width: var(--slot); height: 100%; }
+
+  /* other paintings on the wall (public-domain landscapes and still lifes) */
+  .decor { position: absolute; translate: -50% 0; box-shadow: 7px 18px 24px #000b, 2px 5px 6px #0008; }
+  .decor .pic { width: 100%; height: 100%; background-size: cover; background-position: center;
+                filter: brightness(.82) saturate(.88) sepia(.14);                  /* old varnish */
+                box-shadow: inset 0 0 22px #000a, inset 0 0 0 1px #0006; }
+  .decor.gilt { padding: 22px;
+    background: repeating-linear-gradient(45deg, #0000 0 3px, #3a26081f 3px 5px),
+                repeating-linear-gradient(-45deg, #0000 0 3px, #fff2c018 3px 4px),
+                linear-gradient(135deg, #d9b45c, #7d5718 28%, #e8c97a 48%, #6e4c14 72%, #c9a24a);
+    box-shadow: inset 0 0 0 2px #3d2a0c, inset 0 0 0 6px #b8913f, inset 0 0 0 8px #4a330e, inset 0 0 10px 9px #0006,
+                7px 18px 24px #000b, 2px 5px 6px #0008; }
+  .decor.wood { padding: 16px;
+    background: linear-gradient(#1a0e0680, #1a0e06b0), url(/static/gallery/dark_wood.jpg) 0 0 / 200px;
+    box-shadow: inset 0 0 0 2px #120a04, inset 0 0 0 11px #0000, inset 0 0 0 13px #b8913f,
+                7px 18px 24px #000b, 2px 5px 6px #0008; }
+
+  /* brass candle sconces with a warm, softly flickering light */
+  .sconce { position: absolute; width: 90px; height: 120px; translate: -50% 0; pointer-events: none; }
+  .sconce .light { position: absolute; left: 50%; top: 10px; width: 520px; height: 520px; translate: -50% -50%;
+                   background: radial-gradient(closest-side, #ffcf8a3a, #ffcf8a12 50%, transparent);
+                   mix-blend-mode: screen; animation: flicker 3.7s infinite; }
+  .sconce .plate { position: absolute; left: 50%; top: 22px; width: 22px; height: 78px; translate: -50% 0;
+                   border-radius: 50% / 30%;                                   /* tall oval backplate */
+                   background: radial-gradient(ellipse at 40% 35%, #f4dc94, #b08a3a 45%, #5e4316 90%);
+                   box-shadow: 2px 5px 7px #000a, inset 0 0 0 2px #6b4c1888; }
+  .sconce .arm { position: absolute; top: 56px; width: 30px; height: 26px; border: 3px solid #b8913f;
+                 border-top: none; box-shadow: 2px 4px 4px #0007; }
+  .sconce .arm.l { left: 14px; border-right: none; border-radius: 0 0 0 24px; }   /* curls out from the plate */
+  .sconce .arm.r { right: 14px; border-left: none; border-radius: 0 0 24px 0; }
+  .sconce .candle { position: absolute; top: 28px; width: 8px; height: 26px; border-radius: 2px;
+                    background: linear-gradient(90deg, #d9cdb4, #fffaf0, #cfc2a6); box-shadow: 1px 3px 3px #0007; }
+  .sconce .candle::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 20px; height: 6px; translate: -50% 0;
+                           border-radius: 50%; background: linear-gradient(#f1d68c, #8a6420); box-shadow: 0 2px 3px #0008; }   /* drip cup */
+  .sconce .candle.l { left: 10px; } .sconce .candle.r { right: 10px; }
+  .sconce .flame { position: absolute; top: -13px; left: 50%; width: 8px; height: 14px; translate: -50% 0;
+                   border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+                   background: radial-gradient(ellipse at 50% 75%, #fff8d8, #ffcf66 45%, #ff8a1c 80%, transparent);
+                   box-shadow: 0 0 10px 4px #ffb24a88; animation: flame 1.9s infinite; }
+  .sconce .candle.r .flame { animation-delay: -.7s; }
+  @keyframes flicker { 0%, 100% { opacity: 1; } 23% { opacity: .86; } 41% { opacity: .97; } 63% { opacity: .82; } 80% { opacity: .95; } }
+  @keyframes flame { 0%, 100% { scale: 1 1; } 30% { scale: .9 1.08; } 55% { scale: 1.06 .94; } 78% { scale: .95 1.04; } }
+  .wire { position: absolute; left: 0; top: 128px; width: 100%; height: 120px; pointer-events: none; }
+  .glow { position: absolute; left: 50%; top: -60px; width: 640px; height: 900px; translate: -50% 0; pointer-events: none;
+          /* pool of light from the picture light, fading to nothing at its edges */
+          background: radial-gradient(closest-side ellipse at 50% 45%, #ffd9a040, #ffd9a018 45%, #ffd9a008 75%, transparent);
+          mix-blend-mode: screen; }
+  .lamp { position: absolute; left: 50%; top: 214px; width: 230px; height: 18px; translate: -50% 0; z-index: 3;
+          border-radius: 9px 9px 4px 4px; pointer-events: none;
+          background: linear-gradient(#f3dc9a, #a77c2c 55%, #5e4316);
+          box-shadow: 0 2px 4px #0009, 0 10px 26px #ffdca055; }
+  .lamp::after { content: ""; position: absolute; left: 50%; top: 14px; width: 10px; height: 28px; translate: -50% 0;
+                 background: linear-gradient(90deg, #6b4c18, #d9b867, #6b4c18); border-radius: 0 0 3px 3px; }
+
+  .frame {
+    --lvl: 0; --mouth: 0;
+    position: absolute; left: 50%; top: 250px; translate: -50% 0;
+    width: 400px; aspect-ratio: 4 / 5; padding: 18px; border-radius: 4px; box-sizing: border-box;
+    background: linear-gradient(135deg, #e3c26b, #8a6420 30%, #f0d590 50%, #7a561a 70%, #d4b05a);
+    box-shadow: inset 0 0 0 3px #4a3410, inset 0 0 0 7px #c9a548,
+                8px 22px 26px #000a, 2px 6px 6px #0008,
+                0 0 calc(var(--lvl) * 60px) calc(var(--lvl) * 12px) #f5c86a88;
+    transition: box-shadow 80ms linear; cursor: pointer;
   }
+  .frame::before { content: ""; position: absolute; inset: 0; border-radius: 4px; pointer-events: none; z-index: 1;
+                   background: linear-gradient(#fff3d04a, #0000 35%, #0000 80%, #0003); mix-blend-mode: screen; }
+  body.focused .frame.active { cursor: default; }
+  .slot { transition: filter .8s; }
+  body.focused .slot:not(.active) { filter: brightness(.45) saturate(.7); }
+  .decor, .sconce { transition: filter .8s; }
+  body.focused .decor, body.focused .sconce { filter: brightness(.55) saturate(.8); }
+  .canvas { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0d0a08; box-shadow: inset 0 0 0 3px #3a2a10; }
+  .canvas::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 22px #000b;
+    background: linear-gradient(115deg, transparent 30%, #fff3d81f 45%, #fff3d808 52%, transparent 62%) 50% 0 / 260% 100% no-repeat; }
+  .canvas img, .canvas video, .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .art { background: radial-gradient(ellipse 70% 60% at 42% 30%, #4a3a24, #1a120b 70%, #0d0906); }
+  .art svg { width: 100%; height: 100%; display: block; }
+  .still { transition: opacity .5s; }
+  .frame.live .still { opacity: 0; }
+  .avatar3d { filter: drop-shadow(0 6px 8px #0009); }
+  .frame.idle .still, .frame.idle .avatar3d { filter: brightness(.82) sepia(.2); }
+  .plate { position: absolute; left: 50%; top: 770px; translate: -50% 0; white-space: nowrap;
+           padding: .35rem 1.2rem; font-family: Georgia, serif; font-size: 1.05rem; color: #2a1d08;
+           background: linear-gradient(#f0d590, #b58d3a); border-radius: 3px; box-shadow: 0 3px 6px #0009; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #6b5a44; font-family: Georgia, serif; }
+  .art .mouth { transform-box: fill-box; transform-origin: 50% 15%;
+    transform: scale(calc(1 - var(--mouth) * .15 + var(--wide, 0) * .2), calc(.1 + var(--mouth) * .9)); }
   .art .lids { opacity: 0; animation: blink 4.3s infinite; }
   @keyframes blink { 0%, 93%, 100% { opacity: 0; } 94.5%, 97% { opacity: 1; } }
 
-  /* Jaw for PNG/JPG paintings with a "mouth" box in personas.json */
-  .jaw-gap, .jaw { position: absolute; pointer-events: none; }
-  .jaw-gap { background: radial-gradient(ellipse at 50% 30%, #1a0806 55%, transparent 72%); }
-  .jaw { background-repeat: no-repeat; transform: translateY(calc(var(--mouth) * var(--jaw-drop, 6px))); }
-  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #6b5a44; font-family: Georgia, serif; }
-  .plate {
-    margin-top: .75rem; padding: .35rem 1.2rem; font-family: Georgia, serif; font-size: 1.05rem; color: #2a1d08;
-    background: linear-gradient(#f0d590, #b58d3a); border-radius: 3px; box-shadow: 0 2px 6px #0008;
+  /* ===== overlay: title, navigation, chat ================================= */
+  .hud { position: fixed; z-index: 10; }
+  #title { left: 24px; top: 18px; font-family: Georgia, serif; font-size: 1.5rem; text-shadow: 0 2px 8px #000; }
+  #title small { display: block; font-family: system-ui, sans-serif; font-size: .85rem; color: var(--dim); margin-top: .2rem; }
+  #back { left: 24px; top: 78px; display: none; }
+  .nav { top: 38%; font-size: 2rem; line-height: 1; padding: .4rem .8rem; display: none; background: #2a231d99; }
+  #prev { left: 18px; } #next { right: 18px; }
+  body.focused #back, body.focused .nav { display: block; }
+  body.focused #hint { display: none; }
+  #panel { position: fixed; z-index: 10; left: 50%; bottom: 14px; width: min(760px, calc(100vw - 24px)); translate: -50% 0;
+           background: #15100ccc; backdrop-filter: blur(8px); border: 1px solid #3a3029; border-radius: 10px; padding: .75rem;
+           box-sizing: border-box; transform: translateY(calc(100% + 30px)); transition: transform .5s .3s; }
+  body.focused #panel { transform: none; }
+
+  #log { max-height: 20vh; min-height: 3.5rem; overflow-y: auto; white-space: pre-wrap; margin-bottom: .5rem; }
+  .row { display: flex; gap: .5rem; margin-top: .5rem; align-items: center; flex-wrap: wrap; }
+  #hint { left: 50%; bottom: 26px; translate: -50% 0; color: var(--dim); font-family: Georgia, serif; text-shadow: 0 2px 6px #000; }
+
+  /* wide screens: chat docks on the right so the portrait can be big */
+  @media (min-width: 1100px) {
+    #panel { left: auto; right: 20px; top: 90px; bottom: 20px; width: 400px; translate: none;
+             display: flex; flex-direction: column; transform: translateX(calc(100% + 40px)); }
+    body.focused #panel { transform: none; }
+    #panel #log { flex: 1; max-height: none; }
+    #next { right: 440px; }
   }
-  @media (prefers-reduced-motion: reduce) { .art { animation: none; transition: none; } .frame { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #wall { transition: none; } .sconce .light, .sconce .flame { animation: none; } }
 </style>
 </head>
 <body>
-<h1>Talking portrait — test console</h1>
-<div class="row">
-  <select id="persona"></select>
-  <button id="connect">Connect</button>
-  <button id="clear" title="Forget this conversation">Clear history</button>
-</div>
+<div id="viewport"><div id="wall">
+  <div class="cornice"></div>
+  <div class="rail"></div>
+  <div class="wainscot"></div>
+  <div class="floor"></div>
+</div></div>
 
-<div class="stage">
-  <div class="frame idle" id="frame">
-    <div class="canvas">
-      <div class="placeholder" id="noimg" hidden>No portrait image</div>
-      <div class="art" id="art" role="img"></div>
-      <video id="video" playsinline hidden></video>
-    </div>
+<div class="hud" id="title">Ashford House<small>The portrait hall</small></div>
+<button class="hud" id="back">← Step back</button>
+<button class="hud nav" id="prev" title="Previous portrait (←)">‹</button>
+<button class="hud nav" id="next" title="Next portrait (→)">›</button>
+<div class="hud" id="hint">Click a portrait to walk up to it</div>
+
+<div id="panel">
+  <div id="log"></div>
+  <div class="row">
+    <input id="text" placeholder="Say something and press Enter">
+    <button id="mic" title="Hold to talk">🎤 Hold to talk</button>
+    <button id="stop">Stop</button>
   </div>
-  <div class="plate" id="plate">—</div>
-</div>
-
-<div id="log"></div>
-<div class="row">
-  <input id="text" placeholder="Type to the portrait and press Enter">
-  <button id="mic" title="Hold to talk">🎤 Hold to talk</button>
-  <button id="stop">Stop</button>
-</div>
-<div class="row hf">
-  <button id="handsfree" title="Talk without holding the button; speak to interrupt">🎧 Hands-free: off</button>
-  <span id="hfstatus" class="sys"></span>
+  <div class="row">
+    <button id="handsfree" title="Talk without holding the button; speak to interrupt">🎧 Hands-free: off</button>
+    <span id="hfstatus" class="sys"></span>
+    <span style="flex:1"></span>
+    <button id="clear" title="Forget this conversation">Clear history</button>
+  </div>
 </div>
 
 <script>
@@ -123,65 +221,159 @@ function log(cls, text) {
   $('log').appendChild(div); $('log').scrollTop = 1e9; return div;
 }
 
-// --- portrait display ---------------------------------------------------
-// SVG paintings are put straight into the page so their mouth and eyelids can move.
-// PNG/JPG paintings get an <img>, plus a moving jaw if personas.json gives a mouth box.
-// Personas with a "model" get a live 3D bust instead (static/avatar3d.js).
-let shownId = null, avatar3d = null;
-async function showPersona(p) {
-  $('plate').textContent = p?.name ?? '—';
-  $('noimg').hidden = !!(p?.portrait || p?.model);
-  if (!p || p.id === shownId) return;
-  shownId = p.id;
-  avatar3d?.dispose(); avatar3d = null;
-  const art = $('art'); art.innerHTML = ''; art.setAttribute('aria-label', `Portrait of ${p.name}`);
-  if (p.model) {
-    $('noimg').textContent = 'Loading…'; $('noimg').hidden = false;
-    try {
-      const { mountAvatar } = await import('/static/avatar3d.js');
-      const a = await mountAvatar(art, $('frame'), p.model, p.mood);
-      if (shownId === p.id) avatar3d = a; else a.dispose();
-      $('noimg').hidden = true;
-    } catch (e) {
-      console.error(e); $('noimg').textContent = '3D model failed to load';
-    }
-    return;
-  }
-  $('noimg').textContent = 'No portrait image';
-  if (!p.portrait) return;
-  if (p.portrait.endsWith('.svg')) {
-    const svg = await (await fetch(p.portrait)).text();
-    if (shownId === p.id) art.innerHTML = svg;
-    return;
-  }
-  const img = document.createElement('img'); img.src = p.portrait; img.alt = '';
-  art.appendChild(img);
-  if (p.mouth) img.onload = () => addJaw(art, img, p.mouth);
+// ===== the wall ==============================================================
+// One slot per character: a wire from the picture rail, a picture light, the
+// frame and a name plate. Frames show a still image; only the portrait you
+// walk up to runs live in 3D (keeps the machine free for the AI and voice).
+const slots = [];        // { p, el, frame, art, plate }
+let active = -1;         // index of the portrait you're standing at, -1 = overview
+let avatar3d = null, liveId = null;
+
+function buildWall() {
+  const wall = $('wall');
+  wall.style.setProperty('--n', personas.length);
+  personas.forEach((p, i) => {
+    const el = document.createElement('div'); el.className = 'slot';
+    el.style.left = `calc(var(--pad) + var(--slot) * ${i})`;
+    el.innerHTML = `
+      <svg class="wire" viewBox="0 0 640 120" preserveAspectRatio="none">
+        <path d="M300 0 L130 122 M340 0 L510 122" stroke="#2a2016" stroke-width="2" fill="none" opacity=".8"/>
+        <circle cx="300" cy="2" r="5" fill="#b08a3a"/><circle cx="340" cy="2" r="5" fill="#b08a3a"/></svg>
+      <div class="glow"></div>
+      <div class="frame idle" tabindex="0" role="button" aria-label="Walk up to ${p.name}">
+        <div class="canvas">
+          <div class="placeholder" hidden></div>
+          <div class="art" role="img" aria-label="Portrait of ${p.name}"></div>
+          <video playsinline hidden></video>
+        </div>
+      </div>
+      <div class="lamp"></div>
+      <div class="plate">${p.name}</div>`;
+    wall.appendChild(el);
+    const s = { p, el, frame: el.querySelector('.frame'), art: el.querySelector('.art'),
+                video: el.querySelector('video'), noimg: el.querySelector('.placeholder') };
+    slots.push(s);
+    showStill(s);
+    s.frame.onclick = () => { if (active !== i) walkTo(i); };
+    s.frame.onkeydown = e => { if (e.key === 'Enter' && active !== i) walkTo(i); };
+  });
+  decorateWall();
 }
 
-function addJaw(art, img, m) {
-  const gap = document.createElement('div'); gap.className = 'jaw-gap';
-  const jaw = document.createElement('div'); jaw.className = 'jaw';
-  jaw.style.backgroundImage = `url("${img.src}")`;
-  art.append(gap, jaw);
-  const place = () => {   // match object-fit: cover
-    const W = art.clientWidth, H = art.clientHeight;
-    const s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
-    const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
-    const ox = (W - dw) / 2, oy = (H - dh) / 2;
-    const x = ox + m.x / 100 * dw, y = oy + m.y / 100 * dh, w = m.w / 100 * dw, h = m.h / 100 * dh;
-    // the jaw is the area below the lips; it slides down to open the mouth
-    const jy = y + h * .45;
-    Object.assign(jaw.style, { left: `${x}px`, top: `${jy}px`, width: `${w}px`, height: `${y + h * 1.6 - jy}px`,
-      backgroundSize: `${dw}px ${dh}px`, backgroundPosition: `${ox - x}px ${oy - jy}px` });
-    Object.assign(gap.style, { left: `${x + w * .15}px`, top: `${jy - h * .1}px`, width: `${w * .7}px`, height: `${h * .6}px` });
-    jaw.style.setProperty('--jaw-drop', `${h * .45}px`);
+// Other paintings and candle sconces, placed relative to the portraits:
+// a large landscape at each end, a small painting in each gap between
+// portraits, and sconces above the small ones and beside the ends.
+const ART = '/static/gallery/art/';
+function decorateWall() {
+  const wall = $('wall'), slot = 640, pad = 1100, n = personas.length;
+  const hang = (src, cx, top, w, h, style, title) => {
+    const d = document.createElement('div'); d.className = `decor ${style}`;
+    Object.assign(d.style, { left: `${cx}px`, top: `${top}px`, width: `${w}px`, height: `${h}px` });
+    d.innerHTML = `<div class="pic" role="img" aria-label="${title}" style="background-image:url(${ART}${src})"></div>`;
+    wall.appendChild(d);
   };
-  place(); new ResizeObserver(place).observe(art);
+  const sconce = (cx, top) => {
+    const d = document.createElement('div'); d.className = 'sconce';
+    Object.assign(d.style, { left: `${cx}px`, top: `${top}px` });
+    d.innerHTML = '<div class="light"></div><div class="arm l"></div><div class="arm r"></div><div class="plate"></div>' +
+                  '<div class="candle l"><div class="flame"></div></div><div class="candle r"><div class="flame"></div></div>';
+    wall.appendChild(d);
+  };
+  const firstLeft = pad + 120, lastRight = pad + slot * (n - 1) + 520;
+  hang('summer_shower.jpg', firstLeft - 110 - 232, 372, 420, 318, 'gilt', 'After a Summer Shower, George Inness');
+  hang('catskill.jpg', lastRight + 110 + 237, 386, 430, 286, 'gilt', 'Catskill Mountains, George Inness');
+  sconce(firstLeft - 110 - 464 - 80, 380);
+  sconce(lastRight + 110 + 474 + 80, 380);
+  const gapArt = [['mountain_brook.jpg', 'Mountain Brook, Albert Bierstadt'], ['flower_piece.jpg', 'Flower Piece, Rachel Ruysch']];
+  for (let i = 0; i < n - 1; i++) {
+    const cx = pad + slot * (i + 1), [src, title] = gapArt[i % gapArt.length];
+    hang(src, cx, 430, 150, 184, 'wood', title);
+    sconce(cx, 270);
+  }
 }
-const setAwake = on => $('frame').classList.toggle('idle', !on);
 
-// Voice volume drives the glow and the slight "lean in" of the painting.
+// What a portrait shows when you're not standing at it.
+async function showStill(s) {
+  const { p, art } = s;
+  art.innerHTML = '';
+  const still = p.still || p.portrait;
+  if (still?.endsWith('.svg')) { art.innerHTML = await (await fetch(still)).text(); return; }
+  if (still) { const img = document.createElement('img'); img.className = 'still'; img.src = still; img.alt = ''; art.appendChild(img); return; }
+  s.noimg.textContent = 'No portrait'; s.noimg.hidden = false;
+}
+
+// Camera: overview fits the whole wall; close-up puts one portrait in the
+// upper middle of the screen, above the chat panel.
+let camScale = 1;
+function placeCamera() {
+  const wall = $('wall'), vw = innerWidth, vh = innerHeight, H = wall.offsetHeight;
+  let s, x, y;
+  if (active < 0) {
+    // overview: all portraits plus a bit of wall on each side
+    const items = [...wall.querySelectorAll('.slot, .decor, .sconce')];
+    const x0 = Math.min(...items.map(e => e.offsetLeft - (e.classList.contains('slot') ? 0 : e.offsetWidth / 2))) - 40;
+    const x1 = Math.max(...items.map(e => e.offsetLeft + (e.classList.contains('slot') ? e.offsetWidth : e.offsetWidth / 2))) + 40;
+    const w = x1 - x0;
+    s = Math.min(vw / w, vh / (H - 120)) * .98;
+    x = (vw - w * s) / 2 - x0 * s; y = (vh - (H - 120) * s) / 2;
+  } else {
+    // close-up: the portrait (lamp to name plate, ~600px) fills the space
+    // left free by the chat panel (side panel on wide screens, bottom otherwise)
+    const slot = slots[active].el, f = slots[active].frame;
+    const side = vw >= 1100, panel = $('panel');
+    const freeW = side ? vw - panel.offsetWidth - 40 : vw, freeH = side ? vh : vh - panel.offsetHeight - 30;
+    const fx = slot.offsetLeft + slot.offsetWidth / 2, fy = f.offsetTop + f.offsetHeight / 2;
+    s = Math.min(1.7, (freeH - 30) / 620, (freeW - 30) / 520);
+    x = freeW / 2 - fx * s; y = freeH / 2 - fy * s + 20 * s;
+  }
+  camScale = s;
+  wall.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+  avatar3d?.setScale?.(s);
+}
+addEventListener('resize', placeCamera);
+
+// Walk up to portrait i (or back to the overview with -1).
+async function walkTo(i) {
+  initAudio();                                   // inside the click: allowed to start audio
+  if (i === active) return;
+  leavePortrait();
+  active = i;
+  document.body.classList.toggle('focused', i >= 0);
+  slots.forEach((s, k) => { s.frame.classList.toggle('active', k === i); s.el.classList.toggle('active', k === i); });
+  placeCamera();
+  if (i < 0) return;
+  const s = slots[i];
+  // let the walk finish, then bring the portrait to life and say hello
+  await new Promise(r => setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1000));
+  if (active !== i) return;
+  await goLive(s);
+  if (active === i) connect(s.p.id);
+}
+
+async function goLive(s) {
+  const { p } = s;
+  liveId = p.id;
+  if (!p.model) return;                          // painted portraits talk via CSS only
+  try {
+    const { mountAvatar } = await import('/static/avatar3d.js');
+    const a = await mountAvatar(s.art, s.frame, p.model, p.mood);
+    if (liveId !== p.id) { a.dispose(); return; }
+    avatar3d = a; a.setScale?.(camScale); s.frame.classList.add('live');
+  } catch (e) { console.error(e); log('sys', '3D model failed to load'); }
+}
+
+function leavePortrait() {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  stopPlayback(); stopHandsFree();
+  avatar3d?.dispose(); avatar3d = null; liveId = null;
+  slots.forEach(s => { s.frame.classList.remove('live'); setAwake(s, false); });
+  $('log').innerHTML = '';
+}
+
+const activeSlot = () => slots[active];
+const setAwake = (s, on) => s?.frame.classList.toggle('idle', !on);
+
+// ===== voice level → glow and painted-portrait lips ===========================
 let audioCtx, analyser, levelData, rafId = 0;
 function initAudio() {          // must run inside a click (browser autoplay rules)
   if (audioCtx) { audioCtx.resume(); return; }
@@ -194,20 +386,16 @@ function initAudio() {          // must run inside a click (browser autoplay rul
 }
 function animateLevel() {
   cancelAnimationFrame(rafId);
+  const frame = activeSlot()?.frame; if (!frame) return;
   let smooth = 0, mouth = 0, t = 0;
-  const frame = $('frame');
   const tick = () => {
     let level = 0;
     if (playing && analyser) {
       analyser.getByteTimeDomainData(levelData);
       let sum = 0; for (const v of levelData) sum += (v - 128) ** 2;
       level = Math.min(1, Math.sqrt(sum / levelData.length) / 40);
-    } else if (playing) {
-      // no Web Audio (old browser): fake a talking rhythm
-      t += .25; level = .35 + .3 * Math.sin(t) * Math.sin(t * .37);
-    }
+    } else if (playing) { t += .25; level = .35 + .3 * Math.sin(t) * Math.sin(t * .37); }
     smooth += (level - smooth) * .35;
-    // The mouth reacts fast (opens quickly, closes a bit slower), ignoring quiet noise.
     const target = Math.max(0, Math.min(1, (level - .06) * 1.7));
     mouth += (target - mouth) * (target > mouth ? .6 : .35);
     frame.style.setProperty('--lvl', smooth.toFixed(3));
@@ -219,23 +407,18 @@ function animateLevel() {
   tick();
 }
 
-async function loadPersonas() {
-  personas = await (await fetch('/personas')).json();
-  $('persona').innerHTML = personas.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  showPersona(personas[0]);
-}
-
-function connect() {
-  initAudio();
+// ===== conversation ===========================================================
+function connect(personaId) {
   if (ws) { ws.onclose = null; ws.close(); }
   stopPlayback();
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   $('log').innerHTML = '';
-  ws = new WebSocket(`${proto}://${location.host}/ws/${$('persona').value}?visitor=${visitorId}`);
+  const s = activeSlot();
+  ws = new WebSocket(`${proto}://${location.host}/ws/${personaId}?visitor=${visitorId}`);
   let replyDiv = null;
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
-    if (m.type === 'ready') { log('sys', `Connected to ${m.persona.name}`); showPersona(m.persona); setAwake(true); }
+    if (m.type === 'ready') setAwake(s, true);
     if (m.type === 'transcription') log('you', `You (heard): ${m.text}`);
     if (m.type === 'token') { replyDiv ??= log('them', ''); replyDiv.textContent += m.text; }
     if (m.type === 'speech') { if (!replyDiv) log('them', m.text); enqueue(m); }
@@ -245,29 +428,28 @@ function connect() {
     if (m.type === 'history') showHistory(m.messages);
     if (m.type === 'history_cleared') { $('log').innerHTML = ''; log('sys', 'History cleared'); }
   };
-  ws.onclose = () => { log('sys', 'Disconnected'); setAwake(false); stopHandsFree(); };
+  ws.onclose = () => { log('sys', 'Disconnected'); setAwake(s, false); stopHandsFree(); };
 }
 
-// --- audio / video playback --------------------------------------------
 function enqueue(m) { audioQueue.push(m); if (!playing) playNext(); }
 function stopPlayback() {
   audioQueue.length = 0; playing = false;
   if (current) { current.onended = null; current.pause(); current = null; }
   avatar3d?.silence();
-  $('video').pause(); $('video').hidden = true; $('art').style.visibility = '';
+  const s = activeSlot(); if (s) { s.video.pause(); s.video.hidden = true; s.art.style.visibility = ''; }
 }
 function playNext() {
-  const m = audioQueue.shift();
-  if (!m) { playing = false; $('video').hidden = true; $('art').style.visibility = ''; return; }
+  const m = audioQueue.shift(), s = activeSlot();
+  if (!m || !s) { playing = false; if (s) { s.video.hidden = true; s.art.style.visibility = ''; } return; }
   playing = true;
-  if (m.video) {   // lip-synced clip: the video carries its own audio and replaces the still
-    const v = $('video'); v.hidden = false; $('art').style.visibility = 'hidden';
-    v.src = `data:video/mp4;base64,${m.video}`; v.onended = playNext; v.play();
+  if (m.video) {   // lip-synced clip: the video carries its own audio
+    s.video.hidden = false; s.art.style.visibility = 'hidden';
+    s.video.src = `data:video/mp4;base64,${m.video}`; s.video.onended = playNext; s.video.play();
   } else {
     current = new Audio(`data:audio/wav;base64,${m.audio}`);
     if (audioCtx) { try { audioCtx.createMediaElementSource(current).connect(analyser); } catch {} }
     current.onended = playNext;
-    avatar3d?.speak(current, m.visemes);   // 3D lips follow the mouth-shape timeline
+    avatar3d?.speak(current, m.visemes);           // 3D lips follow the mouth-shape timeline
     if (m.emotion) avatar3d?.express(m.emotion);   // smile, frown... for this piece
     if (m.gesture) avatar3d?.gesture(m.gesture);   // wave, shrug, laugh...
     current.play().catch(playNext);
@@ -275,12 +457,11 @@ function playNext() {
   }
 }
 
-// --- input --------------------------------------------------------------
 const isOpen = () => ws?.readyState === WebSocket.OPEN;
 
 function sendText() {
   const text = $('text').value.trim(); if (!text) return;
-  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  if (!isOpen()) { log('sys', 'Not connected yet'); return; }
   stopPlayback(); log('you', `You: ${text}`); avatar3d?.acknowledge();
   ws.send(JSON.stringify({ type: 'text', text })); $('text').value = '';
 }
@@ -294,11 +475,10 @@ const blobToBase64 = blob => new Promise(resolve => {
 
 let micHeld = false;
 async function startRec() {
-  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  if (!isOpen()) { log('sys', 'Not connected yet'); return; }
   micHeld = true; stopPlayback();
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } });
-  // Button released while the permission prompt was open: don't start recording.
-  if (!micHeld) { stream.getTracks().forEach(t => t.stop()); return; }
+  if (!micHeld) { stream.getTracks().forEach(t => t.stop()); return; }   // released during the permission prompt
   const recorder = new MediaRecorder(stream);
   chunks = []; mediaRecorder = recorder;
   recorder.ondataavailable = e => chunks.push(e.data);
@@ -316,10 +496,10 @@ function stopRec() {
   $('mic').classList.remove('rec');
 }
 
-// --- hands-free -----------------------------------------------------------
+// ===== hands-free =============================================================
 // Silero VAD runs in the browser and cuts the mic stream into utterances; each
-// one is sent as a WAV, exactly like a hold-to-talk recording. Speaking while
-// the portrait talks interrupts it.
+// one is sent as a WAV, like a hold-to-talk recording. Speaking while the
+// portrait talks interrupts it.
 const VAD_URL = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/';
 const ORT_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 const FRAMES_TO_INTERRUPT = 8;    // ~0.25 s of clear speech (32 ms frames)
@@ -349,7 +529,7 @@ function wavBase64(samples, rate = 16000) {
 }
 
 async function startHandsFree() {
-  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  if (!isOpen()) { log('sys', 'Not connected yet'); return; }
   $('handsfree').disabled = true; setStatus('Loading voice detector…');
   try {
     if (!window.vad) { await loadScript(ORT_URL + 'ort.min.js'); await loadScript(VAD_URL + 'bundle.min.js'); }
@@ -397,9 +577,8 @@ async function stopHandsFree() {
   $('mic').disabled = false;
 }
 
-$('handsfree').onclick = () => (handsFree ? stopHandsFree() : startHandsFree());
-// --- chat history -----------------------------------------------------------
-// A random id kept in this browser, so the portrait remembers you next time.
+// ===== chat history ===========================================================
+// A random id kept in this browser, so the portraits remember you next time.
 const visitorId = (() => {
   const make = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
   try {
@@ -418,17 +597,33 @@ function showHistory(messages) {
   log('sys', '— today —');
 }
 
+// ===== controls ===============================================================
+$('handsfree').onclick = () => (handsFree ? stopHandsFree() : startHandsFree());
 $('clear').onclick = () => {
-  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  if (!isOpen()) return;
   if (!confirm('Forget your whole conversation with this portrait?')) return;
   stopPlayback(); ws.send(JSON.stringify({ type: 'clear_history' }));
 };
-$('connect').onclick = connect;
-$('persona').onchange = () => showPersona(personas.find(p => p.id === $('persona').value));
 $('text').onkeydown = e => { if (e.key === 'Enter') sendText(); };
 $('stop').onclick = () => { stopPlayback(); if (isOpen()) ws.send(JSON.stringify({ type: 'stop' })); };
 $('mic').onpointerdown = startRec; $('mic').onpointerup = stopRec; $('mic').onpointerleave = stopRec;
-loadPersonas();
+$('back').onclick = () => walkTo(-1);
+$('prev').onclick = () => walkTo((active - 1 + slots.length) % slots.length);
+$('next').onclick = () => walkTo((active + 1) % slots.length);
+addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea')) return;
+  if (e.key === 'Escape' && active >= 0) walkTo(-1);
+  if (e.key === 'ArrowRight') walkTo(active < 0 ? 0 : (active + 1) % slots.length);
+  if (e.key === 'ArrowLeft') walkTo(active < 0 ? slots.length - 1 : (active - 1 + slots.length) % slots.length);
+});
+
+(async () => {
+  personas = await (await fetch('/personas')).json();
+  buildWall();
+  // first placement without the walking animation
+  $('wall').style.transition = 'none'; placeCamera();
+  $('wall').offsetWidth; $('wall').style.transition = '';
+})();
 </script>
 </body>
 </html>

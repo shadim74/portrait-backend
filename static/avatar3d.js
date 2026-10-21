@@ -279,12 +279,14 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   const resize = () => {
     const w = container.clientWidth, h = container.clientHeight;
     if (!w || !h) return;
-    // Canvas = picture area plus margins, positioned over the frame.
-    const fr = frame.getBoundingClientRect(), cr = container.getBoundingClientRect();
+    // Canvas = picture area plus margins, positioned over the frame. Measured
+    // in layout pixels (offsets), so it stays right while the page is scaled.
+    let ox = 0, oy = 0;
+    for (let el = container; el && el !== frame; el = el.offsetParent) { ox += el.offsetLeft; oy += el.offsetTop; }
     const left = Math.round(w * POP.side), top = Math.round(h * POP.top), bottom = Math.round(h * POP.bottom);
     const W = w + 2 * left, H = h + top + bottom;
     Object.assign(renderer.domElement.style, {
-      left: `${cr.left - fr.left - left}px`, top: `${cr.top - fr.top - top}px`, width: `${W}px`, height: `${H}px`,
+      left: `${ox - left}px`, top: `${oy - top}px`, width: `${W}px`, height: `${H}px`,
     });
     renderer.setSize(W, H, false);
     // Same framing as before inside the picture, extended outward.
@@ -519,6 +521,8 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     listen(on) { listening = !!on; nextListenNod = performance.now() + 900; },
     /** The visitor finished a sentence: a small nod to show he got it. */
     acknowledge() { nodVel += 1.1; },
+    /** The page is zoomed by this factor: render sharper to match. */
+    setScale(sc) { renderer.setPixelRatio(Math.min(devicePixelRatio * Math.max(1, sc), 3)); resize(); },
     /** Show a facial expression: neutral, happy, sad, surprised, angry, thinking. */
     express(e) { if (EXPRESSIONS[e]) { emotion = e; lastExpressed = performance.now(); } },
     /** The expression he goes back to when quiet. */

@@ -42,6 +42,7 @@ class Persona:
     # Optional 3D model shown instead of the image, e.g.
     # {"file": "portraits/models/butler/butler.fbx", "textures": {"head": {"color": "..."}}}
     model: dict | None = None
+    still: str = ""         # image shown while you're not standing at this portrait
 
 
 def load_personas(path: str | None = None) -> dict[str, Persona]:

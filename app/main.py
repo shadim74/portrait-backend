@@ -67,7 +67,8 @@ def persona_info(p: Persona) -> dict:
     if p.model and (url := asset_url(p.model.get("file", ""))):
         model = {**p.model, "url": url}
     return {"id": p.id, "name": p.name, "greeting": p.greeting,
-            "portrait": asset_url(p.portrait), "mouth": p.mouth, "model": model, "mood": p.mood}
+            "portrait": asset_url(p.portrait), "mouth": p.mouth, "model": model, "mood": p.mood,
+            "still": asset_url(p.still)}
 
 
 @dataclass

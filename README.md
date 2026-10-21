@@ -56,8 +56,18 @@ cp .env.example .env        # set DEVICE=cpu if you have no NVIDIA GPU
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Open http://localhost:8000 for the test console: pick a portrait, connect,
-type or hold the mic button to talk.
+Open http://localhost:8000: you're in the **portrait hall** of Ashford House, with
+the three portraits hanging on the wall. Click one (or use ← / →) to walk up
+to it; it comes to life and greets you, and the chat opens. Type, hold the
+mic button, or turn on hands-free to talk. "Step back" (or Esc) returns to
+the whole wall.
+
+Only the portrait you're standing at runs live in 3D; the others show a
+pre-rendered still (`portraits/stills/`), so the page stays light. The wall,
+panelling and floor use small CC0 textures from [Poly Haven](https://polyhaven.com)
+in `static/gallery/`. The other paintings on the wall are public-domain works
+(Inness, Bierstadt, Ruysch) via Wikimedia Commons, listed in
+`static/gallery/art/CREDITS.md`.
 
 **Hands-free:** press "Hands-free" to talk without holding the button. A
 voice detector (Silero VAD, via `@ricky0123/vad-web`) runs in the browser,
@@ -214,7 +224,7 @@ app/personas.py    characters and conversation memory
 app/history.py     saved chat history (SQLite)
 app/text_utils.py  sentence splitting, <think> removal, speech cleanup
 app/visemes.py     phonemes -> mouth-shape timeline for 3D lip-sync
-static/index.html  browser test console + animated portrait (lips, blink, 3D tilt)
+static/index.html  the portrait hall: wall, walking between portraits, chat
 static/avatar3d.js 3D character renderer (Three.js)
 portraits/         portrait images (placeholder SVGs) and models/ (3D characters)
 personas.json      the characters
