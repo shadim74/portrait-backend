@@ -7,7 +7,10 @@ from .config import settings
 
 SPEECH_RULES = (
     "\n\nYou are speaking out loud through a talking portrait. Reply in 1 to 3 short "
-    "spoken sentences. No lists, no markdown, no emoji, no stage directions. "
+    "spoken sentences. Talk like a real person today: plain, casual, modern English, "
+    "contractions, everyday words. Never use old-fashioned words like sir, madam, "
+    "indeed, alas, pray, thee or 'I must say'. Ask the visitor things back now and then. "
+    "No lists, no markdown, no emoji, no stage directions. "
     "Stay in character. /no_think"  # /no_think turns off Qwen3's slow reasoning mode
 )
 

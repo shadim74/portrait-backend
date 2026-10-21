@@ -67,6 +67,19 @@ ignored unless it is clearly someone speaking, so it doesn't answer itself;
 headphones work best. The first start downloads the Whisper and
 Kokoro weights (~2 GB) and takes a minute.
 
+## The characters
+
+Three portraits in **Ashford House**, an old family house that's now a small
+museum; after closing time the portraits wake up and chat with visitors. They
+talk like people today (casual, modern English) and know each other:
+
+- **Arthur, the Old Headmaster**: retired village headteacher, warm and
+  jokey, loves puzzles, biscuits and football.
+- **Eleanor, the Grey Lady**: painted in 1912, quiet, kind and observant,
+  with a family secret she only hints at.
+- **Hollis, the House Manager** (3D): ran the house for 25 years, practical,
+  dry humour, runs on coffee.
+
 ## Add your own portrait
 
 Add an entry to `personas.json`:
