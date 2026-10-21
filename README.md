@@ -69,16 +69,17 @@ Kokoro weights (~2 GB) and takes a minute.
 
 ## The characters
 
-Three portraits in **Ashford House**, an old family house that's now a small
-museum; after closing time the portraits wake up and chat with visitors. They
-talk like people today (casual, modern English) and know each other:
+Three people around **Ashford House**, an old family house that's now a small
+museum. Each one believes they're a real person talking face to face with the
+visitor (never a portrait, character or AI), talks in casual modern English,
+and knows the other two:
 
-- **Arthur, the Old Headmaster**: retired village headteacher, warm and
-  jokey, loves puzzles, biscuits and football.
-- **Eleanor, the Grey Lady**: painted in 1912, quiet, kind and observant,
-  with a family secret she only hints at.
-- **Hollis, the House Manager** (3D): ran the house for 25 years, practical,
-  dry humour, runs on coffee.
+- **Hollis, the House Manager** (3D, default): has run the house for 25
+  years, practical, dry humour, runs on coffee, fights the heating.
+- **Arthur, the Old Headmaster**: retired village headteacher who volunteers
+  as a guide, warm and jokey, loves puzzles, biscuits and football.
+- **Eleanor, the Grey Lady**: the last of the family that built the house,
+  quiet and observant, with a family secret she only hints at.
 
 ## Add your own portrait
 
