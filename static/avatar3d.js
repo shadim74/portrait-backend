@@ -54,7 +54,19 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
-  renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+  renderer.localClippingEnabled = true;
+  renderer.domElement.className = 'avatar3d';
+  renderer.domElement.style.cssText = 'position:absolute;display:block;pointer-events:none;z-index:2';
+
+  // "Out of frame": the canvas is bigger than the picture and sits on top of
+  // the gold frame. Inside the picture everything is drawn; outside it, only
+  // what is above the frame's bottom edge (gesturing arms swinging out past
+  // the sides) or in front of the picture plane (hands reaching toward you).
+  // His lower body stays hidden "behind" the bottom of the frame.
+  const POP = { side: .6, top: .25, bottom: .35, ...(model.popOut || {}) };   // extra canvas, in frame sizes
+  const popDepth = model.popOutDepth ?? 19;            // cm in front of the spine (his chest is ~15)
+  const keepAboveBottom = new THREE.Plane(), keepInFront = new THREE.Plane(new THREE.Vector3(0, 0, 1), -popDepth);
+  const clipPlanes = model.popOut === false ? [] : [keepAboveBottom, keepInFront];
 
   const scene = new THREE.Scene();
   // Old-master lighting: warm key from the upper left, cool dim fill, rim light.
@@ -86,6 +98,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
       const p = model.textures?.[part] || {};
       return new THREE.MeshStandardMaterial({
         name: m.name, roughness: part === 'head' ? 0.62 : 0.85, metalness: 0,
+        clippingPlanes: clipPlanes, clipIntersection: true,   // hidden only if outside BOTH planes
         map: p.color ? tex(p.color) : null,
         normalMap: p.normal ? tex(p.normal, false) : null,
       });
@@ -135,9 +148,17 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
 
   // --- camera: waist-up portrait so the hands show ---------------------------
   const headPos = new THREE.Vector3(); head.getWorldPosition(headPos);
-  const look = headPos.clone().add(new THREE.Vector3(0, -(model.lookDown ?? 32), 0));
+  const look = headPos.clone().add(new THREE.Vector3(0, -(model.lookDown ?? 27), 0));
   camera.position.set(look.x, look.y + 8, look.z + (model.distance ?? 275));
   camera.lookAt(look);
+  camera.updateMatrixWorld(true);
+  {
+    // The plane through the camera and the picture's bottom edge: things above it are kept.
+    camera.updateProjectionMatrix();
+    const a = new THREE.Vector3(-1, -1, .5).unproject(camera), b = new THREE.Vector3(1, -1, .5).unproject(camera);
+    keepAboveBottom.setFromCoplanarPoints(camera.position, a, b);
+    if (keepAboveBottom.distanceToPoint(headPos) < 0) keepAboveBottom.negate();
+  }
 
   // --- helpers ---------------------------------------------------------------
   const morph = (name, value) => {
@@ -157,12 +178,21 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   const resize = () => {
     const w = container.clientWidth, h = container.clientHeight;
     if (!w || !h) return;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h; camera.updateProjectionMatrix();
+    // Canvas = picture area plus margins, positioned over the frame.
+    const fr = frame.getBoundingClientRect(), cr = container.getBoundingClientRect();
+    const left = Math.round(w * POP.side), top = Math.round(h * POP.top), bottom = Math.round(h * POP.bottom);
+    const W = w + 2 * left, H = h + top + bottom;
+    Object.assign(renderer.domElement.style, {
+      left: `${cr.left - fr.left - left}px`, top: `${cr.top - fr.top - top}px`, width: `${W}px`, height: `${H}px`,
+    });
+    renderer.setSize(W, H, false);
+    // Same framing as before inside the picture, extended outward.
+    camera.aspect = w / h;
+    camera.setViewOffset(w, h, -left, -top, W, H);
   };
   const ro = new ResizeObserver(resize); ro.observe(container);
   container.classList.add('has-model');
-  container.appendChild(renderer.domElement);
+  frame.appendChild(renderer.domElement);
   resize();
 
   // --- speech state (set by the page) ---------------------------------------

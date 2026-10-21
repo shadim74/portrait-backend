@@ -27,7 +27,7 @@
   .past { opacity: .6; }
 
   /* --- the portrait --- */
-  .stage { display: flex; flex-direction: column; align-items: center; margin: 1.5rem 0; }
+  .stage { display: flex; flex-direction: column; align-items: center; margin: 1.5rem 0; overflow-x: clip; }
   .frame {
     --lvl: 0;                        /* 0..1, set from the voice volume while speaking */
     --mouth: 0;                      /* 0..1 how open the mouth is, follows the voice closely */
@@ -49,6 +49,10 @@
   .canvas img, .canvas video, .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .art svg { width: 100%; height: 100%; display: block; }
   .art.has-model { background: radial-gradient(ellipse 70% 60% at 42% 30%, #4a3a24, #1a120b 70%, #0d0906); }
+  .art.has-model { transform: none; animation: none; }
+  /* the 3D canvas sits over the frame so hands can come out of it */
+  .avatar3d { filter: drop-shadow(0 6px 8px #0009); transition: filter .4s; }
+  .frame.idle .avatar3d { filter: drop-shadow(0 6px 8px #0009) brightness(.7) sepia(.35) grayscale(.3); }
   .art {
     transform-origin: 50% 70%;
     transform: scale(calc(1.02 + var(--lvl) * .03)) translateY(calc(var(--lvl) * -4px));
