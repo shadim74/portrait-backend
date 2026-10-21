@@ -142,7 +142,7 @@ Three.js by `static/avatar3d.js`:
 |---|---|---|
 | Hollis | `Business_Male_04` | `portraits/models/butler/` |
 | Arthur | `Male_Adult_03` | `portraits/models/arthur/` |
-| Clara | `Female_Adult_15` | `portraits/models/clara/` |
+| Clara | `Female_Adult_07` | `portraits/models/clara/` |
 
 They share one skeleton and the same face controls, so every feature below
 works for all of them:
