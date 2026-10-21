@@ -15,15 +15,17 @@ class SentenceSplitter:
     """Feed streamed tokens in, get speakable chunks out.
 
     Chunks are normally whole sentences. To start talking sooner, the first
-    chunk of a reply is cut at the first clause break after `first_min` chars,
-    and any sentence that grows past `long_len` chars is cut at a clause break
-    after `long_min` chars.
+    chunk of a reply ends at the first sentence or clause break after
+    `first_min` chars (or, with no break by `first_max` chars, at a word
+    break). Any later sentence that grows past `long_len` chars is cut at a
+    clause break after `long_min` chars.
     """
 
-    def __init__(self, first_min: int = 24, long_len: int = 110, long_min: int = 40):
+    def __init__(self, first_min: int = 10, first_max: int = 60, long_len: int = 110, long_min: int = 40):
         self.buffer = ""
         self.emitted = 0
-        self.first_min, self.long_len, self.long_min = first_min, long_len, long_min
+        self.first_min, self.first_max = first_min, first_max
+        self.long_len, self.long_min = long_len, long_min
 
     def feed(self, text: str) -> list[str]:
         self.buffer += text
@@ -32,7 +34,8 @@ class SentenceSplitter:
         for m in _SENTENCE_END.finditer(self.buffer):
             candidate = self.buffer[start:m.end()].strip()
             last_word = candidate.split()[-1].lower() if candidate else ""
-            if last_word in _ABBREVIATIONS or len(candidate) < MIN_CHARS:
+            min_chars = self.first_min if self.emitted + len(chunks) == 0 else MIN_CHARS
+            if last_word in _ABBREVIATIONS or len(candidate) < min_chars:
                 continue  # keep accumulating
             chunks.append(candidate)
             start = m.end()
@@ -51,10 +54,14 @@ class SentenceSplitter:
             else:
                 break
             m = next((m for m in _CLAUSE_END.finditer(self.buffer) if m.start() >= min_pos), None)
-            if not m:
+            if m:
+                cut = m.end()
+            elif self.emitted == 0 and len(self.buffer) >= self.first_max and " " in self.buffer.strip():
+                cut = self.buffer.rstrip().rfind(" ") + 1   # no pause yet: cut at the last word break
+            else:
                 break
-            out.append(self.buffer[:m.end()].strip())
-            self.buffer = self.buffer[m.end():]
+            out.append(self.buffer[:cut].strip())
+            self.buffer = self.buffer[cut:]
             self.emitted += 1
         return out
 

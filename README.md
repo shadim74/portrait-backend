@@ -25,7 +25,10 @@ browser ──text or mic audio──▶ WebSocket /ws/{persona}
 ```
 
 The LLM and TTS run at the same time: the portrait starts speaking sentence 1
-while sentence 2 is still being written. Sending a new message or `stop`
+while sentence 2 is still being written. To start even sooner, the first piece
+of a reply is cut at its first natural pause (a comma, dash or short
+sentence), and very long sentences are split at commas, so speech typically
+begins about 1 second after you finish talking or typing. Sending a new message or `stop`
 interrupts the current reply (barge-in).
 
 ## Setup
@@ -54,7 +57,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Open http://localhost:8000 for the test console: pick a portrait, connect,
-type or hold the mic button to talk. The first start downloads the Whisper and
+type or hold the mic button to talk.
+
+**Hands-free:** press "Hands-free" to talk without holding the button. A
+voice detector (Silero VAD, via `@ricky0123/vad-web`) runs in the browser,
+sends each thing you say when you pause, and you can interrupt the portrait
+just by speaking. With speakers, sound picked up while the portrait talks is
+ignored unless it is clearly someone speaking, so it doesn't answer itself;
+headphones work best. The first start downloads the Whisper and
 Kokoro weights (~2 GB) and takes a minute.
 
 ## Add your own portrait

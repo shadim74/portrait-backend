@@ -17,7 +17,9 @@ def test_splitter_streams_sentences():
     for tok in ["Hello there, trav", "eller. Dr. Smith was ", "here at 3.5 o'clock! And", " then?"]:
         out += s.feed(tok)
     out += s.flush()
-    assert out == ["Hello there, traveller.", "Dr. Smith was here at 3.5 o'clock!", "And then?"]
+    # the first chunk ends at the first pause so speech can start early
+    # ("traveller." alone is too short, so it joins the next sentence)
+    assert out == ["Hello there,", "traveller. Dr. Smith was here at 3.5 o'clock!", "And then?"]
 
 
 def test_think_filter_handles_split_tags():
@@ -81,8 +83,18 @@ def test_splitter_starts_early_on_first_clause():
         out += s.feed(tok)
     out += s.flush()
     # The first chunk is cut at a comma so speech can start right away;
-    # short clauses before 24 characters stay attached.
-    assert out == ["Ah, the library, my dear visitor,", "is where the old books whisper.", "Come and see."]
+    # a very short first clause ("Ah,") stays attached.
+    assert out == ["Ah, the library,", "my dear visitor, is where the old books whisper.", "Come and see."]
+
+
+def test_splitter_first_chunk_without_pause_cuts_at_word():
+    s = SentenceSplitter()
+    words = "Well then I suppose the oldest thing in this house would have to be the clock in the hall".split()
+    out = []
+    for w in words:
+        out += s.feed(w + " ")
+    assert out and len(out[0]) <= 70 and not out[0].endswith(" ")
+    assert " ".join(out + s.flush()) == " ".join(words)
 
 
 def test_splitter_cuts_long_sentences_at_clauses():
