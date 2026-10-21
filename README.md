@@ -78,8 +78,10 @@ and knows the other two:
   years, practical, dry humour, runs on coffee, fights the heating.
 - **Arthur, the Old Headmaster**: retired village headteacher who volunteers
   as a guide, warm and jokey, loves puzzles, biscuits and football.
-- **Eleanor, the Grey Lady**: the last of the family that built the house,
-  quiet and observant, with a family secret she only hints at.
+- **Clara, the Tour Guide**: 24, great-granddaughter of the family that
+  built the house, gives tours (sometimes dressed as a 1912 lady's maid), a
+  cheerful history nerd obsessed with the house's Downton-era past, sitting on
+  a secret from her great-grandmother Eleanor's diaries.
 
 ## Add your own portrait
 
@@ -140,7 +142,7 @@ Three.js by `static/avatar3d.js`:
 |---|---|---|
 | Hollis | `Business_Male_04` | `portraits/models/butler/` |
 | Arthur | `Male_Adult_03` | `portraits/models/arthur/` |
-| Eleanor | `Female_Adult_14` | `portraits/models/eleanor/` |
+| Clara | `Female_Adult_15` | `portraits/models/clara/` |
 
 They share one skeleton and the same face controls, so every feature below
 works for all of them:

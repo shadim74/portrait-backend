@@ -63,7 +63,8 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   // what is above the frame's bottom edge (gesturing arms swinging out past
   // the sides) or in front of the picture plane (hands reaching toward you).
   // His lower body stays hidden "behind" the bottom of the frame.
-  const POP = { side: .6, top: .25, bottom: .35, ...(model.popOut || {}) };   // extra canvas, in frame sizes
+  const POP = model.popOut === false ? { side: 0, top: 0, bottom: 0 }           // extra canvas, in frame sizes
+            : { side: .6, top: .25, bottom: .35, ...(model.popOut || {}) };
   const popDepth = model.popOutDepth ?? 19;            // cm in front of the spine (his chest is ~15)
   const keepAboveBottom = new THREE.Plane(), keepInFront = new THREE.Plane(new THREE.Vector3(0, 0, 1), -popDepth);
   const clipPlanes = model.popOut === false ? [] : [keepAboveBottom, keepInFront];
