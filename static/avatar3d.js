@@ -94,13 +94,17 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     if (!o.isMesh) return;
     o.frustumCulled = false;
     const mats = [].concat(o.material).map(m => {
-      const part = m.name.includes('head') ? 'head' : 'body';
+      // Rocketbox materials: <id>_body, <id>_head and, for hair/eyelashes, <id>_opacity.
+      const part = m.name.includes('opacity') ? 'opacity' : m.name.includes('head') ? 'head' : 'body';
       const p = model.textures?.[part] || {};
+      const hair = part === 'opacity';
       return new THREE.MeshStandardMaterial({
-        name: m.name, roughness: part === 'head' ? 0.62 : 0.85, metalness: 0,
+        name: m.name, roughness: part === 'body' ? 0.85 : hair ? 0.7 : 0.62, metalness: 0,
         clippingPlanes: clipPlanes, clipIntersection: true,   // hidden only if outside BOTH planes
         map: p.color ? tex(p.color) : null,
         normalMap: p.normal ? tex(p.normal, false) : null,
+        // hair strands: cut out by the texture's alpha (no sorting problems), both sides visible
+        ...(hair ? { alphaTest: 0.35, side: THREE.DoubleSide } : {}),
       });
     });
     o.material = mats.length === 1 ? mats[0] : mats;

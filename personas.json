@@ -18,7 +18,7 @@
           "normal": "m015_body_normal.png"
         }
       },
-      "animations": "animations.json"
+      "animations": "../animations/male.json"
     },
     "welcome_back": "Oh hey, welcome back. Good to see you again.",
     "mood": "neutral"
@@ -31,7 +31,24 @@
     "portrait": "portraits/headmaster.svg",
     "greeting": "Oh, hello there! Come closer, I don't bite. What's your name?",
     "welcome_back": "Hey, you're back! I was hoping you'd come by again.",
-    "mood": "happy"
+    "mood": "happy",
+    "model": {
+      "file": "portraits/models/arthur/arthur.fbx",
+      "animations": "../animations/male.json",
+      "textures": {
+        "head": {
+          "color": "m004_head_color.jpg",
+          "normal": "m004_head_normal.png"
+        },
+        "body": {
+          "color": "m004_body_color.jpg",
+          "normal": "m004_body_normal.png"
+        },
+        "opacity": {
+          "color": "m004_opacity_color.png"
+        }
+      }
+    }
   },
   {
     "id": "lady",
@@ -41,6 +58,23 @@
     "portrait": "portraits/lady.svg",
     "greeting": "Hi. Not many people find their way up here. What brings you to the house?",
     "welcome_back": "You came back. I'm glad, honestly.",
-    "mood": "sad"
+    "mood": "sad",
+    "model": {
+      "file": "portraits/models/eleanor/eleanor.fbx",
+      "animations": "../animations/female.json",
+      "textures": {
+        "head": {
+          "color": "f017_head_color.jpg",
+          "normal": "f017_head_normal.png"
+        },
+        "body": {
+          "color": "f017_body_color.jpg",
+          "normal": "f017_body_normal.png"
+        },
+        "opacity": {
+          "color": "f017_opacity_color.png"
+        }
+      }
+    }
   }
 ]

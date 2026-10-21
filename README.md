@@ -74,7 +74,7 @@ museum. Each one believes they're a real person talking face to face with the
 visitor (never a portrait, character or AI), talks in casual modern English,
 and knows the other two:
 
-- **Hollis, the House Manager** (3D, default): has run the house for 25
+- **Hollis, the House Manager** (default): has run the house for 25
   years, practical, dry humour, runs on coffee, fights the heating.
 - **Arthur, the Old Headmaster**: retired village headteacher who volunteers
   as a guide, warm and jokey, loves puzzles, biscuits and football.
@@ -131,18 +131,31 @@ these classes: `mouth` (opens downward), `lids` (shown briefly to blink),
 placeholders to replace with real art. PNG/JPG portraits get the tilt plus a
 moving jaw if `mouth` is set in `personas.json`.
 
-**3D characters:** a persona can have a `model` instead of an image. Mr. Hollis
-the Butler uses `Business_Male_04` from [Microsoft Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox)
-(MIT license, copy in `portraits/models/butler/LICENSE.md`), rendered with
+**3D characters:** a persona can have a `model` instead of an image. All three
+characters are 3D models from [Microsoft Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox)
+(MIT license, copy in each `portraits/models/<name>/LICENSE.md`), rendered with
 Three.js by `static/avatar3d.js`:
+
+| Character | Rocketbox model | Folder |
+|---|---|---|
+| Hollis | `Business_Male_04` | `portraits/models/butler/` |
+| Arthur | `Male_Adult_03` | `portraits/models/arthur/` |
+| Eleanor | `Female_Adult_14` | `portraits/models/eleanor/` |
+
+They share one skeleton and the same face controls, so every feature below
+works for all of them:
+
 
 - **Lip-sync:** Kokoro reports every phoneme and how long it lasts;
   `app/visemes.py` turns that into a mouth-shape timeline sent with each
   `speech` message (`"visemes": [[seconds, "aa"], ...]`), and the model follows
   it against the audio's playback time.
 - **Body and hands:** motion-captured Rocketbox clips in
-  `portraits/models/butler/animations.json`: idle breathing while listening,
-  talking gestures while speaking, sometimes a nod afterwards.
+  `portraits/models/animations/` (`male.json`, `female.json`): calm breathing
+  while listening, talking gestures while speaking.
+- **Out of the frame:** the 3D canvas is larger than the picture and sits over
+  the gold frame, so gesturing arms and hands reaching toward you come out of
+  it, while the lower body stays hidden behind the bottom edge.
 - **Expressions:** the LLM starts each reply (and any change of feeling)
   with a tag like `[happy]`, `[sad]`, `[surprised]`, `[angry]` or
   `[thinking]`. The server strips the tags (they're never shown or spoken)
@@ -151,9 +164,11 @@ Three.js by `static/avatar3d.js`:
   `personas.json` a few seconds after he stops talking.
 - **Face:** natural blinking (sometimes double), small eye movements and
   glances aside, eyebrow lifts and head nods on stressed syllables, and a
-  half-asleep look when disconnected. Any other Rocketbox avatar works the same
-way: copy its `Export/*_facial.fbx`, convert the head/body textures to JPG/PNG
-and add a `model` entry like the butler's.
+  half-asleep look when disconnected.
+
+Any other Rocketbox avatar works the same way: copy its `Export/*_facial.fbx`,
+convert the head/body (and, for hair, opacity) textures to JPG/PNG and add a
+`model` entry like the others in `personas.json`.
 
 ## Tests
 
@@ -165,14 +180,9 @@ The tests replace every model with a fake, so they run in a second with no GPU.
 
 ## Next steps
 
-1. **Full 3D characters:** replace the paintings with real 3D heads rendered in
-   the browser with Three.js and `@pixiv/three-vrm` (VRM models). VRM models
-   have mouth shapes (aa, ih, ou, ee, oh) for proper lip shapes, blinking, head
-   movement and eyes that follow the visitor; drive the mouth from the same
-   audio-level code in `static/index.html`, or send per-sentence phoneme timings
-   from Kokoro for exact lip-sync. Runs on a Mac, no server GPU needed. The main
-   work is getting three models that fit the castle style (most free VRM
-   models are anime-style, so plan to buy or commission them).
+1. **Custom 3D characters:** the Rocketbox models are modern everyday people.
+   For bespoke looks, commission or buy models with ARKit blend shapes and a
+   compatible skeleton, or use VRM models via `@pixiv/three-vrm`.
 2. **Lip-sync video:** implement `MuseTalkLipSync` in `app/lipsync.py`, then set
    `LIPSYNC_ENGINE=musetalk`. Each `speech` message will then include an MP4.
 3. **Idle animation:** pre-render blinking/breathing loops per portrait (e.g.
