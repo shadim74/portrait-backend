@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portrait Test Console</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; background: #1b1714; color: #eee4d4; }
+  h1 { font-family: Georgia, serif; font-weight: normal; }
+  .row { display: flex; gap: .5rem; margin: .75rem 0; }
+  input, select, button { font: inherit; padding: .5rem .75rem; border-radius: 6px; border: 1px solid #5a4a3a; background: #2a231d; color: inherit; }
+  input { flex: 1; min-width: 0; }
+  button { cursor: pointer; }
+  button.rec { background: #8b2e2e; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hf { align-items: center; }
+  #handsfree.on { background: #2f5a35; border-color: #4f8a57; }
+  #hfstatus.hearing { color: #9ecbff; }
+  #log { background: #120f0d; border: 1px solid #3a3029; border-radius: 6px; padding: 1rem; height: 260px; overflow-y: auto; white-space: pre-wrap; }
+  .you { color: #9ecbff; } .them { color: #f0d9a8; } .sys { color: #888; font-size: .9em; }
+
+  /* --- the portrait --- */
+  .stage { display: flex; flex-direction: column; align-items: center; margin: 1.5rem 0; }
+  .frame {
+    --lvl: 0;                        /* 0..1, set from the voice volume while speaking */
+    --mouth: 0;                      /* 0..1 how open the mouth is, follows the voice closely */
+    position: relative; width: min(280px, 70vw); aspect-ratio: 4 / 5;
+    padding: 18px; border-radius: 4px;
+    background: linear-gradient(135deg, #e3c26b, #8a6420 30%, #f0d590 50%, #7a561a 70%, #d4b05a);
+    box-shadow: inset 0 0 0 3px #4a3410, inset 0 0 0 7px #c9a548, 0 12px 30px #000a,
+                0 0 calc(var(--lvl) * 60px) calc(var(--lvl) * 12px) #f5c86a88;
+    transition: box-shadow 80ms linear;
+  }
+  .canvas { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0d0a08; box-shadow: inset 0 0 0 3px #3a2a10; }
+  /* depth: shadow of the frame falling onto the canvas, and a soft varnish sheen */
+  .canvas::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 22px #000b;
+    background: linear-gradient(115deg, transparent 30%, #fff3d81f 45%, #fff3d808 52%, transparent 62%)
+                50% 0 / 260% 100% no-repeat;
+  }
+  .canvas img, .canvas video, .art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .art svg { width: 100%; height: 100%; display: block; }
+  .art.has-model { background: radial-gradient(ellipse 70% 60% at 42% 30%, #4a3a24, #1a120b 70%, #0d0906); }
+  .art {
+    transform-origin: 50% 70%;
+    transform: scale(calc(1.02 + var(--lvl) * .03)) translateY(calc(var(--lvl) * -4px));
+    filter: brightness(calc(.85 + var(--lvl) * .3)) sepia(.15);
+    transition: transform 80ms linear, filter 80ms linear;
+    animation: breathe 5s ease-in-out infinite;
+  }
+  .frame.idle .art { filter: brightness(.7) sepia(.35) grayscale(.3); }
+  @keyframes breathe { 50% { translate: 0 -2px; scale: 1.008; } }
+
+  /* Lips on the SVG paintings: class "mouth" opens downward, "lids" blink. */
+  .art .mouth {
+    transform-box: fill-box; transform-origin: 50% 15%;
+    transform: scale(calc(1 - var(--mouth) * .15 + var(--wide, 0) * .2), calc(.1 + var(--mouth) * .9));
+  }
+  .art .lids { opacity: 0; animation: blink 4.3s infinite; }
+  @keyframes blink { 0%, 93%, 100% { opacity: 0; } 94.5%, 97% { opacity: 1; } }
+
+  /* Jaw for PNG/JPG paintings with a "mouth" box in personas.json */
+  .jaw-gap, .jaw { position: absolute; pointer-events: none; }
+  .jaw-gap { background: radial-gradient(ellipse at 50% 30%, #1a0806 55%, transparent 72%); }
+  .jaw { background-repeat: no-repeat; transform: translateY(calc(var(--mouth) * var(--jaw-drop, 6px))); }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #6b5a44; font-family: Georgia, serif; }
+  .plate {
+    margin-top: .75rem; padding: .35rem 1.2rem; font-family: Georgia, serif; font-size: 1.05rem; color: #2a1d08;
+    background: linear-gradient(#f0d590, #b58d3a); border-radius: 3px; box-shadow: 0 2px 6px #0008;
+  }
+  @media (prefers-reduced-motion: reduce) { .art { animation: none; transition: none; } .frame { transition: none; } }
+</style>
+</head>
+<body>
+<h1>Talking portrait — test console</h1>
+<div class="row">
+  <select id="persona"></select>
+  <button id="connect">Connect</button>
+</div>
+
+<div class="stage">
+  <div class="frame idle" id="frame">
+    <div class="canvas">
+      <div class="placeholder" id="noimg" hidden>No portrait image</div>
+      <div class="art" id="art" role="img"></div>
+      <video id="video" playsinline hidden></video>
+    </div>
+  </div>
+  <div class="plate" id="plate">—</div>
+</div>
+
+<div id="log"></div>
+<div class="row">
+  <input id="text" placeholder="Type to the portrait and press Enter">
+  <button id="mic" title="Hold to talk">🎤 Hold to talk</button>
+  <button id="stop">Stop</button>
+</div>
+<div class="row hf">
+  <button id="handsfree" title="Talk without holding the button; speak to interrupt">🎧 Hands-free: off</button>
+  <span id="hfstatus" class="sys"></span>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let ws, mediaRecorder, chunks = [], personas = [];
+const audioQueue = []; let playing = false; let current = null;
+
+function log(cls, text) {
+  const div = document.createElement('div'); div.className = cls; div.textContent = text;
+  $('log').appendChild(div); $('log').scrollTop = 1e9; return div;
+}
+
+// --- portrait display ---------------------------------------------------
+// SVG paintings are put straight into the page so their mouth and eyelids can move.
+// PNG/JPG paintings get an <img>, plus a moving jaw if personas.json gives a mouth box.
+// Personas with a "model" get a live 3D bust instead (static/avatar3d.js).
+let shownId = null, avatar3d = null;
+async function showPersona(p) {
+  $('plate').textContent = p?.name ?? '—';
+  $('noimg').hidden = !!(p?.portrait || p?.model);
+  if (!p || p.id === shownId) return;
+  shownId = p.id;
+  avatar3d?.dispose(); avatar3d = null;
+  const art = $('art'); art.innerHTML = ''; art.setAttribute('aria-label', `Portrait of ${p.name}`);
+  if (p.model) {
+    $('noimg').textContent = 'Loading…'; $('noimg').hidden = false;
+    try {
+      const { mountAvatar } = await import('/static/avatar3d.js');
+      const a = await mountAvatar(art, $('frame'), p.model);
+      if (shownId === p.id) avatar3d = a; else a.dispose();
+      $('noimg').hidden = true;
+    } catch (e) {
+      console.error(e); $('noimg').textContent = '3D model failed to load';
+    }
+    return;
+  }
+  $('noimg').textContent = 'No portrait image';
+  if (!p.portrait) return;
+  if (p.portrait.endsWith('.svg')) {
+    const svg = await (await fetch(p.portrait)).text();
+    if (shownId === p.id) art.innerHTML = svg;
+    return;
+  }
+  const img = document.createElement('img'); img.src = p.portrait; img.alt = '';
+  art.appendChild(img);
+  if (p.mouth) img.onload = () => addJaw(art, img, p.mouth);
+}
+
+function addJaw(art, img, m) {
+  const gap = document.createElement('div'); gap.className = 'jaw-gap';
+  const jaw = document.createElement('div'); jaw.className = 'jaw';
+  jaw.style.backgroundImage = `url("${img.src}")`;
+  art.append(gap, jaw);
+  const place = () => {   // match object-fit: cover
+    const W = art.clientWidth, H = art.clientHeight;
+    const s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+    const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+    const ox = (W - dw) / 2, oy = (H - dh) / 2;
+    const x = ox + m.x / 100 * dw, y = oy + m.y / 100 * dh, w = m.w / 100 * dw, h = m.h / 100 * dh;
+    // the jaw is the area below the lips; it slides down to open the mouth
+    const jy = y + h * .45;
+    Object.assign(jaw.style, { left: `${x}px`, top: `${jy}px`, width: `${w}px`, height: `${y + h * 1.6 - jy}px`,
+      backgroundSize: `${dw}px ${dh}px`, backgroundPosition: `${ox - x}px ${oy - jy}px` });
+    Object.assign(gap.style, { left: `${x + w * .15}px`, top: `${jy - h * .1}px`, width: `${w * .7}px`, height: `${h * .6}px` });
+    jaw.style.setProperty('--jaw-drop', `${h * .45}px`);
+  };
+  place(); new ResizeObserver(place).observe(art);
+}
+const setAwake = on => $('frame').classList.toggle('idle', !on);
+
+// Voice volume drives the glow and the slight "lean in" of the painting.
+let audioCtx, analyser, levelData, rafId = 0;
+function initAudio() {          // must run inside a click (browser autoplay rules)
+  if (audioCtx) { audioCtx.resume(); return; }
+  try {
+    audioCtx = new AudioContext();
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = .6;
+    analyser.connect(audioCtx.destination);
+    levelData = new Uint8Array(analyser.fftSize);
+  } catch { audioCtx = null; }
+}
+function animateLevel() {
+  cancelAnimationFrame(rafId);
+  let smooth = 0, mouth = 0, t = 0;
+  const frame = $('frame');
+  const tick = () => {
+    let level = 0;
+    if (playing && analyser) {
+      analyser.getByteTimeDomainData(levelData);
+      let sum = 0; for (const v of levelData) sum += (v - 128) ** 2;
+      level = Math.min(1, Math.sqrt(sum / levelData.length) / 40);
+    } else if (playing) {
+      // no Web Audio (old browser): fake a talking rhythm
+      t += .25; level = .35 + .3 * Math.sin(t) * Math.sin(t * .37);
+    }
+    smooth += (level - smooth) * .35;
+    // The mouth reacts fast (opens quickly, closes a bit slower), ignoring quiet noise.
+    const target = Math.max(0, Math.min(1, (level - .06) * 1.7));
+    mouth += (target - mouth) * (target > mouth ? .6 : .35);
+    frame.style.setProperty('--lvl', smooth.toFixed(3));
+    frame.style.setProperty('--mouth', mouth.toFixed(3));
+    frame.style.setProperty('--wide', (Math.sin(performance.now() / 90) * .5 * mouth).toFixed(3));
+    if (playing || smooth > .01 || mouth > .01) rafId = requestAnimationFrame(tick);
+    else { frame.style.setProperty('--lvl', 0); frame.style.setProperty('--mouth', 0); }
+  };
+  tick();
+}
+
+async function loadPersonas() {
+  personas = await (await fetch('/personas')).json();
+  $('persona').innerHTML = personas.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  showPersona(personas[0]);
+}
+
+function connect() {
+  initAudio();
+  if (ws) { ws.onclose = null; ws.close(); }
+  stopPlayback();
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/${$('persona').value}`);
+  let replyDiv = null;
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'ready') { log('sys', `Connected to ${m.persona.name}`); showPersona(m.persona); setAwake(true); }
+    if (m.type === 'transcription') log('you', `You (heard): ${m.text}`);
+    if (m.type === 'token') { replyDiv ??= log('them', ''); replyDiv.textContent += m.text; }
+    if (m.type === 'speech') { if (!replyDiv) log('them', m.text); enqueue(m); }
+    if (m.type === 'done') replyDiv = null;
+    if (m.type === 'interrupted') { log('sys', '(interrupted)'); replyDiv = null; }
+    if (m.type === 'error') log('sys', `Error: ${m.message}`);
+  };
+  ws.onclose = () => { log('sys', 'Disconnected'); setAwake(false); stopHandsFree(); };
+}
+
+// --- audio / video playback --------------------------------------------
+function enqueue(m) { audioQueue.push(m); if (!playing) playNext(); }
+function stopPlayback() {
+  audioQueue.length = 0; playing = false;
+  if (current) { current.onended = null; current.pause(); current = null; }
+  avatar3d?.silence();
+  $('video').pause(); $('video').hidden = true; $('art').style.visibility = '';
+}
+function playNext() {
+  const m = audioQueue.shift();
+  if (!m) { playing = false; $('video').hidden = true; $('art').style.visibility = ''; return; }
+  playing = true;
+  if (m.video) {   // lip-synced clip: the video carries its own audio and replaces the still
+    const v = $('video'); v.hidden = false; $('art').style.visibility = 'hidden';
+    v.src = `data:video/mp4;base64,${m.video}`; v.onended = playNext; v.play();
+  } else {
+    current = new Audio(`data:audio/wav;base64,${m.audio}`);
+    if (audioCtx) { try { audioCtx.createMediaElementSource(current).connect(analyser); } catch {} }
+    current.onended = playNext;
+    avatar3d?.speak(current, m.visemes);   // 3D lips follow the mouth-shape timeline
+    current.play().catch(playNext);
+    animateLevel();
+  }
+}
+
+// --- input --------------------------------------------------------------
+const isOpen = () => ws?.readyState === WebSocket.OPEN;
+
+function sendText() {
+  const text = $('text').value.trim(); if (!text) return;
+  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  stopPlayback(); log('you', `You: ${text}`);
+  ws.send(JSON.stringify({ type: 'text', text })); $('text').value = '';
+}
+
+// Blob -> base64 without spreading every byte into one call (that overflows the stack).
+const blobToBase64 = blob => new Promise(resolve => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result.split(',')[1]);
+  r.readAsDataURL(blob);
+});
+
+let micHeld = false;
+async function startRec() {
+  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  micHeld = true; stopPlayback();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } });
+  // Button released while the permission prompt was open: don't start recording.
+  if (!micHeld) { stream.getTracks().forEach(t => t.stop()); return; }
+  const recorder = new MediaRecorder(stream);
+  chunks = []; mediaRecorder = recorder;
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    const blob = new Blob(chunks, { type: recorder.mimeType });
+    if (blob.size && isOpen()) ws.send(JSON.stringify({ type: 'audio', audio: await blobToBase64(blob) }));
+  };
+  recorder.start(); $('mic').classList.add('rec');
+}
+function stopRec() {
+  micHeld = false;
+  if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+  $('mic').classList.remove('rec');
+}
+
+// --- hands-free -----------------------------------------------------------
+// Silero VAD runs in the browser and cuts the mic stream into utterances; each
+// one is sent as a WAV, exactly like a hold-to-talk recording. Speaking while
+// the portrait talks interrupts it.
+const VAD_URL = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/';
+const ORT_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const FRAMES_TO_INTERRUPT = 8;    // ~0.25 s of clear speech (32 ms frames)
+let vadInstance = null, handsFree = false;
+// Echo guard: with speakers, the mic also hears the portrait. Speech that
+// starts while it talks only counts if it is clear enough to interrupt it.
+let startedWhilePlaying = false, bargedIn = false, speechFrames = 0;
+
+const loadScript = src => new Promise((resolve, reject) => {
+  const s = document.createElement('script'); s.src = src; s.onload = resolve;
+  s.onerror = () => reject(new Error(`could not load ${src}`)); document.head.appendChild(s);
+});
+function setStatus(text, hearing = false) { $('hfstatus').textContent = text; $('hfstatus').classList.toggle('hearing', hearing); }
+
+// Float32 samples (16 kHz mono) -> base64 16-bit WAV
+function wavBase64(samples, rate = 16000) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); str(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  samples.forEach((x, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x)) * 0x7fff, true));
+  const bytes = new Uint8Array(buf); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+async function startHandsFree() {
+  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  $('handsfree').disabled = true; setStatus('Loading voice detector…');
+  try {
+    if (!window.vad) { await loadScript(ORT_URL + 'ort.min.js'); await loadScript(VAD_URL + 'bundle.min.js'); }
+    vadInstance ??= await vad.MicVAD.new({
+      model: 'v5', baseAssetPath: VAD_URL, onnxWASMBasePath: ORT_URL, startOnLoad: false,
+      positiveSpeechThreshold: .5, negativeSpeechThreshold: .35,
+      minSpeechMs: 300, redemptionMs: 700, preSpeechPadMs: 300,
+      onSpeechStart: () => {
+        startedWhilePlaying = playing; bargedIn = false; speechFrames = 0;
+        if (!playing) setStatus('Hearing you…', true);
+      },
+      onFrameProcessed: probs => {
+        if (!playing || bargedIn) return;
+        speechFrames = probs.isSpeech > .75 ? speechFrames + 1 : 0;
+        if (speechFrames >= FRAMES_TO_INTERRUPT) {     // clearly the visitor talking
+          bargedIn = true; stopPlayback();
+          if (isOpen()) ws.send(JSON.stringify({ type: 'stop' }));
+          setStatus('Hearing you…', true);
+        }
+      },
+      onSpeechEnd: audio => {
+        setStatus('Listening');
+        if (startedWhilePlaying && !bargedIn) return;   // most likely the portrait's own voice
+        if (isOpen()) ws.send(JSON.stringify({ type: 'audio', audio: wavBase64(audio) }));
+      },
+      onVADMisfire: () => setStatus('Listening'),
+    });
+    initAudio();
+    await vadInstance.start();
+    handsFree = true; setStatus('Listening');
+    $('handsfree').textContent = '🎧 Hands-free: on'; $('handsfree').classList.add('on');
+    $('mic').disabled = true;
+  } catch (e) {
+    console.error(e); setStatus(''); log('sys', `Hands-free failed: ${e.message || e}`);
+  } finally {
+    $('handsfree').disabled = false;
+  }
+}
+
+async function stopHandsFree() {
+  if (!handsFree) return;
+  handsFree = false;
+  try { await vadInstance?.pause(); } catch {}
+  setStatus(''); $('handsfree').textContent = '🎧 Hands-free: off'; $('handsfree').classList.remove('on');
+  $('mic').disabled = false;
+}
+
+$('handsfree').onclick = () => (handsFree ? stopHandsFree() : startHandsFree());
+$('connect').onclick = connect;
+$('persona').onchange = () => showPersona(personas.find(p => p.id === $('persona').value));
+$('text').onkeydown = e => { if (e.key === 'Enter') sendText(); };
+$('stop').onclick = () => { stopPlayback(); if (isOpen()) ws.send(JSON.stringify({ type: 'stop' })); };
+$('mic').onpointerdown = startRec; $('mic').onpointerup = stopRec; $('mic').onpointerleave = stopRec;
+loadPersonas();
+</script>
+</body>
+</html>

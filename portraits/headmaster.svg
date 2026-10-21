@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" preserveAspectRatio="xMidYMid slice">
+  <!-- Placeholder painting. Elements with class "mouth" and "lids" are animated by the page. -->
+  <defs>
+    <radialGradient id="hm-bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#5b4a2e"/><stop offset="1" stop-color="#1c140c"/>
+    </radialGradient>
+    <radialGradient id="hm-skin" cx="45%" cy="40%" r="60%">
+      <stop offset="0" stop-color="#f1cfa8"/><stop offset="1" stop-color="#b98a62"/>
+    </radialGradient>
+    <linearGradient id="hm-robe" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4b2a6b"/><stop offset="1" stop-color="#1f1030"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="500" fill="url(#hm-bg)" class="backdrop"/>
+  <g class="figure">
+  <!-- robe -->
+  <path d="M40 500 C60 380 120 330 200 325 C280 330 340 380 360 500 Z" fill="url(#hm-robe)"/>
+  <path d="M175 330 L200 500 L225 330 Z" fill="#c9a548" opacity=".55"/>
+  <!-- face -->
+  <ellipse cx="200" cy="225" rx="62" ry="78" fill="url(#hm-skin)"/>
+  <!-- long white beard -->
+  <path d="M140 235 C145 330 175 400 200 420 C225 400 255 330 260 235 C245 275 225 285 200 285 C175 285 155 275 140 235 Z" fill="#ece6da"/>
+  <path d="M150 260 C170 300 230 300 250 260 C235 280 165 280 150 260 Z" fill="#d8d0c2"/>
+  <!-- mouth (opens downward from under the moustache) -->
+  <g class="mouth">
+    <ellipse cx="200" cy="270" rx="17" ry="11" fill="#3a1a14" stroke="#8a4f3c" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+    <ellipse cx="200" cy="263" rx="11" ry="3" fill="#f2ece0"/>
+  </g>
+  <!-- moustache -->
+  <path d="M166 262 C178 250 194 252 200 258 C206 252 222 250 234 262 C222 270 210 266 200 263 C190 266 178 270 166 262 Z" fill="#f6f2ea"/>
+  <!-- eyes -->
+  <ellipse cx="176" cy="215" rx="7" ry="5" fill="#fff8ee"/><circle cx="176" cy="215" r="4" fill="#2b4a6b"/><circle cx="177" cy="214" r="1.3" fill="#fff"/>
+  <ellipse cx="224" cy="215" rx="7" ry="5" fill="#fff8ee"/><circle cx="224" cy="215" r="4" fill="#2b4a6b"/><circle cx="225" cy="214" r="1.3" fill="#fff"/>
+  <g class="lids" fill="#d4a67c">
+    <ellipse cx="176" cy="215" rx="8.5" ry="6.5"/><ellipse cx="224" cy="215" rx="8.5" ry="6.5"/>
+    <path d="M168 217 Q176 221 184 217 M216 217 Q224 221 232 217" stroke="#7a5236" stroke-width="1.5" fill="none"/>
+  </g>
+  <!-- half-moon spectacles and brows -->
+  <path d="M160 220 Q176 236 192 220 Z M208 220 Q224 236 240 220 Z" fill="#bfe0ff" opacity=".3" stroke="#c9a548" stroke-width="2"/>
+  <line x1="192" y1="221" x2="208" y2="221" stroke="#c9a548" stroke-width="2"/>
+  <path d="M164 200 Q176 192 188 199 M212 199 Q224 192 236 200" stroke="#ece6da" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M200 222 Q195 244 205 247" stroke="#9b6f4c" stroke-width="3" fill="none"/>
+  <!-- pointed hat -->
+  <path d="M128 168 C150 150 250 150 272 168 C255 120 225 60 250 20 C200 40 160 100 128 168 Z" fill="url(#hm-robe)"/>
+  <ellipse cx="200" cy="168" rx="80" ry="14" fill="#2e1846"/>
+  <circle cx="215" cy="110" r="5" fill="#c9a548"/><circle cx="190" cy="135" r="3" fill="#c9a548"/>
+  </g>
+  <rect width="400" height="500" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="30"/>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" preserveAspectRatio="xMidYMid slice">
+  <!-- Placeholder painting. Elements with class "mouth" and "lids" are animated by the page. -->
+  <defs>
+    <radialGradient id="ld-bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#3b4452"/><stop offset="1" stop-color="#0f1218"/>
+    </radialGradient>
+    <radialGradient id="ld-skin" cx="45%" cy="40%" r="60%">
+      <stop offset="0" stop-color="#f3e4d8"/><stop offset="1" stop-color="#c3aa98"/>
+    </radialGradient>
+    <linearGradient id="ld-dress" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a7adb5"/><stop offset="1" stop-color="#4c535c"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="500" fill="url(#ld-bg)" class="backdrop"/>
+  <g class="figure">
+  <!-- hair behind -->
+  <path d="M125 230 C110 120 290 120 275 230 C285 300 270 340 250 350 L150 350 C130 340 115 300 125 230 Z" fill="#2a1f1a"/>
+  <!-- dress -->
+  <path d="M50 500 C70 400 130 360 200 358 C270 360 330 400 350 500 Z" fill="url(#ld-dress)"/>
+  <path d="M135 380 C165 405 235 405 265 380" stroke="#e7e2d6" stroke-width="5" fill="none"/>
+  <!-- neck and face -->
+  <rect x="180" y="290" width="40" height="70" fill="#d7c1b0"/>
+  <ellipse cx="200" cy="235" rx="55" ry="72" fill="url(#ld-skin)"/>
+  <ellipse cx="170" cy="258" rx="10" ry="6" fill="#e3a9a0" opacity=".35"/><ellipse cx="230" cy="258" rx="10" ry="6" fill="#e3a9a0" opacity=".35"/>
+  <!-- pearl necklace -->
+  <path d="M170 350 Q200 372 230 350" stroke="#f4f1ea" stroke-width="6" stroke-dasharray="1 9" stroke-linecap="round" fill="none"/>
+  <!-- eyes, slightly downcast -->
+  <ellipse cx="178" cy="226" rx="8" ry="4.5" fill="#fbf6f0"/><circle cx="178" cy="227" r="3.8" fill="#4b5a6a"/><circle cx="179" cy="226" r="1.2" fill="#fff"/>
+  <ellipse cx="222" cy="226" rx="8" ry="4.5" fill="#fbf6f0"/><circle cx="222" cy="227" r="3.8" fill="#4b5a6a"/><circle cx="223" cy="226" r="1.2" fill="#fff"/>
+  <path d="M169 224 Q178 218 187 224 M213 224 Q222 218 231 224" stroke="#2a1f1a" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <g class="lids" fill="#e2cbbb">
+    <ellipse cx="178" cy="226" rx="9.5" ry="6"/><ellipse cx="222" cy="226" rx="9.5" ry="6"/>
+    <path d="M169 228 Q178 233 187 228 M213 228 Q222 233 231 228" stroke="#2a1f1a" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+  <path d="M166 212 Q178 206 190 211 M210 211 Q222 206 234 212" stroke="#2a1f1a" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M200 236 Q197 254 204 256" stroke="#a88d7a" stroke-width="2.5" fill="none"/>
+  <!-- mouth -->
+  <g class="mouth">
+    <ellipse cx="200" cy="276" rx="12" ry="8" fill="#4a1c1e" stroke="#a5605f" stroke-width="3" vector-effect="non-scaling-stroke"/>
+    <ellipse cx="200" cy="271" rx="7" ry="2" fill="#f4eee6"/>
+  </g>
+  <!-- hair on top, centre parting and bun -->
+  <path d="M145 210 C150 150 250 150 255 210 C240 175 215 165 200 168 C185 165 160 175 145 210 Z" fill="#33261f"/>
+  <circle cx="200" cy="148" r="30" fill="#33261f"/>
+  </g>
+  <rect width="400" height="500" fill="#9fb0c4" opacity=".08"/>
+  <rect width="400" height="500" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="30"/>
+</svg>

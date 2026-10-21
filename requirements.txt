@@ -1,0 +1,13 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+openai>=1.40          # client for Ollama / vLLM / LM Studio (OpenAI-compatible API)
+faster-whisper>=1.1   # speech-to-text
+av>=14,<14.3                # faster-whisper 1.2 passes metadata_errors, removed in PyAV 15
+kokoro>=0.9           # text-to-speech (Kokoro-82M); also needs espeak-ng installed on the system
+soundfile
+numpy
+python-dotenv
+
+# dev / tests
+pytest
+httpx

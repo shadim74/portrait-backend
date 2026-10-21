@@ -1,0 +1,28 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Local settings (copy .env.example to .env)
+.env
+
+# Third-party checkouts (e.g. MuseTalk for lip-sync video)
+third_party/
+
+# Downloaded model weights / caches, if stored in the project
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
