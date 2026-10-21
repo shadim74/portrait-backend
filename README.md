@@ -154,7 +154,16 @@ works for all of them:
   it against the audio's playback time.
 - **Body and hands:** motion-captured Rocketbox clips in
   `portraits/models/animations/` (`male.json`, `female.json`): calm breathing
-  while listening, talking gestures while speaking.
+  while listening, and talking gestures in the style of the current mood
+  (relaxed, excited, sad or angry).
+- **Gestures:** the LLM can add tags like `[wave]`, `[shrug]`, `[laugh]`,
+  `[nod]`, `[shake head]` or `[think]`; the server strips them and sends the
+  gesture with that speech piece, and the character plays it. Greetings come
+  with a wave.
+- **Listening:** small nods while you talk (hands-free or hold-to-talk) and a
+  nod when you finish.
+- **Body language:** now and then while listening, a glance to one side, a
+  look over the shoulder, or a slight turn and weight shift.
 - **Out of the frame:** the 3D canvas is larger than the picture and sits over
   the gold frame, so gesturing arms and hands reaching toward you come out of
   it, while the lower body stays hidden behind the bottom edge.

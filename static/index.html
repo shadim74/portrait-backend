@@ -269,6 +269,7 @@ function playNext() {
     current.onended = playNext;
     avatar3d?.speak(current, m.visemes);   // 3D lips follow the mouth-shape timeline
     if (m.emotion) avatar3d?.express(m.emotion);   // smile, frown... for this piece
+    if (m.gesture) avatar3d?.gesture(m.gesture);   // wave, shrug, laugh...
     current.play().catch(playNext);
     animateLevel();
   }
@@ -280,7 +281,7 @@ const isOpen = () => ws?.readyState === WebSocket.OPEN;
 function sendText() {
   const text = $('text').value.trim(); if (!text) return;
   if (!isOpen()) { log('sys', 'Connect first'); return; }
-  stopPlayback(); log('you', `You: ${text}`);
+  stopPlayback(); log('you', `You: ${text}`); avatar3d?.acknowledge();
   ws.send(JSON.stringify({ type: 'text', text })); $('text').value = '';
 }
 
@@ -306,9 +307,10 @@ async function startRec() {
     const blob = new Blob(chunks, { type: recorder.mimeType });
     if (blob.size && isOpen()) ws.send(JSON.stringify({ type: 'audio', audio: await blobToBase64(blob) }));
   };
-  recorder.start(); $('mic').classList.add('rec');
+  recorder.start(); $('mic').classList.add('rec'); avatar3d?.listen(true);
 }
 function stopRec() {
+  if (micHeld && mediaRecorder?.state === 'recording') { avatar3d?.listen(false); avatar3d?.acknowledge(); }
   micHeld = false;
   if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
   $('mic').classList.remove('rec');
@@ -357,7 +359,7 @@ async function startHandsFree() {
       minSpeechMs: 300, redemptionMs: 700, preSpeechPadMs: 300,
       onSpeechStart: () => {
         startedWhilePlaying = playing; bargedIn = false; speechFrames = 0;
-        if (!playing) setStatus('Hearing you…', true);
+        if (!playing) { setStatus('Hearing you…', true); avatar3d?.listen(true); }
       },
       onFrameProcessed: probs => {
         if (!playing || bargedIn) return;
@@ -365,15 +367,15 @@ async function startHandsFree() {
         if (speechFrames >= FRAMES_TO_INTERRUPT) {     // clearly the visitor talking
           bargedIn = true; stopPlayback();
           if (isOpen()) ws.send(JSON.stringify({ type: 'stop' }));
-          setStatus('Hearing you…', true);
+          setStatus('Hearing you…', true); avatar3d?.listen(true);
         }
       },
       onSpeechEnd: audio => {
-        setStatus('Listening');
+        setStatus('Listening'); avatar3d?.listen(false);
         if (startedWhilePlaying && !bargedIn) return;   // most likely the portrait's own voice
-        if (isOpen()) ws.send(JSON.stringify({ type: 'audio', audio: wavBase64(audio) }));
+        if (isOpen()) { ws.send(JSON.stringify({ type: 'audio', audio: wavBase64(audio) })); avatar3d?.acknowledge(); }
       },
-      onVADMisfire: () => setStatus('Listening'),
+      onVADMisfire: () => { setStatus('Listening'); avatar3d?.listen(false); },
     });
     initAudio();
     await vadInstance.start();

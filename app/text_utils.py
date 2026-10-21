@@ -132,22 +132,35 @@ _EMOTION_ALIASES = {"smile": "happy", "smiling": "happy", "amused": "happy", "la
                     "shocked": "surprised", "surprise": "surprised", "curious": "thinking",
                     "thoughtful": "thinking", "pensive": "thinking", "annoyed": "angry",
                     "irritated": "angry", "mad": "angry", "calm": "neutral"}
-_TAG = re.compile(r"\[\s*([A-Za-z]+)\s*\]\s*")
+GESTURES = ("laugh", "shrug", "nod", "shake", "wave", "think")
+_GESTURE_ALIASES = {"laughs": "laugh", "laughing": "laugh", "chuckle": "laugh", "chuckles": "laugh",
+                    "giggle": "laugh", "shrugs": "shrug", "shrugging": "shrug", "nods": "nod",
+                    "nodding": "nod", "shake head": "shake", "shakes head": "shake",
+                    "head shake": "shake", "shaking head": "shake", "waves": "wave", "waving": "wave",
+                    "hand on chin": "think", "ponder": "think", "ponders": "think"}
+_TAG = re.compile(r"\[\s*([A-Za-z][A-Za-z \-]{0,18}?)\s*\]\s*")
 
 
 class EmotionFilter:
-    """Pulls [happy]-style mood tags out of a token stream.
+    """Pulls [happy]-style mood tags and [shrug]-style gesture tags out of a
+    token stream.
 
     feed() returns the text without tags; `self.current` is the latest mood
-    seen. Unknown words in brackets are dropped too (never spoken). A "[" at
-    the end of a token is held back until we know whether it's a tag.
+    seen and `take_gesture()` returns the latest gesture not yet used. Unknown
+    words in brackets are dropped too (never spoken). A "[" at the end of a
+    token is held back until we know whether it's a tag.
     """
 
-    MAX_TAG = 14
+    MAX_TAG = 22
 
     def __init__(self, default: str = "neutral"):
         self.current = default
+        self.gesture: str | None = None
         self.pending = ""
+
+    def take_gesture(self) -> str | None:
+        g, self.gesture = self.gesture, None
+        return g
 
     def feed(self, text: str) -> str:
         self.pending += text
@@ -156,7 +169,12 @@ class EmotionFilter:
             m = _TAG.search(self.pending)
             if m:
                 out.append(self.pending[:m.start()])
-                word = m.group(1).lower()
+                word = " ".join(m.group(1).lower().replace("-", " ").split())
+                gesture = _GESTURE_ALIASES.get(word, word)
+                if gesture in GESTURES:
+                    self.gesture = gesture
+                    if gesture == "laugh":
+                        self.current = "happy"
                 word = _EMOTION_ALIASES.get(word, word)
                 if word in EMOTIONS:
                     self.current = word

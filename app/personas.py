@@ -19,6 +19,9 @@ SPEECH_RULES = (
     "[neutral] [happy] [sad] [surprised] [angry] [thinking], for example: "
     "\"[happy] Oh, I love that question!\" If your feeling changes later in the reply, put a "
     "new tag right before that sentence. The tags are your face, never spoken. "
+    "You can also use your body: add a gesture tag where it fits naturally, at most one or "
+    "two per reply: [laugh] [shrug] [nod] [shake head] [wave] [think]. Wave when you say "
+    "hello or goodbye; shrug when you don't know; [think] when you're pondering. "
     "Stay in character. /no_think"  # /no_think turns off Qwen3's slow reasoning mode
 )
 

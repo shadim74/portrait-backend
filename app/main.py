@@ -16,7 +16,8 @@ Server -> client (JSON):
   {"type": "token",         "text": "..."}            # live reply text
   {"type": "speech", "index": 0, "text": "...", "audio": "<base64 wav>", "video": "<base64 mp4>|null",
    "visemes": [[seconds, "aa"], ...]|null,          # mouth shapes for 3D lip-sync
-   "emotion": "neutral|happy|sad|surprised|angry|thinking"}   # facial expression
+   "emotion": "neutral|happy|sad|surprised|angry|thinking",   # facial expression
+   "gesture": "laugh|shrug|nod|shake|wave|think"|null}         # body gesture for this piece
   {"type": "done",          "text": "<full reply>"}
   {"type": "interrupted"}
   {"type": "error",         "message": "..."}
@@ -159,7 +160,7 @@ class Session:
         async with self.locks[lock_name]:
             return await asyncio.to_thread(fn, *args)
 
-    async def speak(self, index: int, text: str, emotion: str | None = None):
+    async def speak(self, index: int, text: str, emotion: str | None = None, gesture: str | None = None):
         persona = self.conv.persona
         tts = self.engines.tts
         if hasattr(tts, "synthesize_timed"):   # also returns mouth shapes for 3D lip-sync
@@ -173,12 +174,13 @@ class Session:
             video=base64.b64encode(video).decode() if video else None,
             visemes=visemes,
             emotion=emotion or self.conv.persona.mood,
+            gesture=gesture,
         )
 
     async def reply(self, user_text: str):
         """LLM -> sentences -> TTS (+ lip-sync), running concurrently."""
         started = time.perf_counter()
-        sentences: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+        sentences: asyncio.Queue[tuple[str, str, str | None] | None] = asyncio.Queue()
         full_reply: list[str] = []   # what the visitor sees and hears
         raw_reply: list[str] = []    # with [mood] tags, kept in the LLM's own context
 
@@ -198,25 +200,25 @@ class Session:
                 full_reply.append(text)
                 await self.send(type="token", text=text)
                 for s in splitter.feed(text):
-                    await sentences.put((s, mood.current))
+                    await sentences.put((s, mood.current, mood.take_gesture()))
 
             try:
                 async for token in self.engines.llm.stream(messages):
                     await emit(think.feed(token))
                 await emit(think.flush(), final=True)
                 for s in splitter.flush():
-                    await sentences.put((s, mood.current))
+                    await sentences.put((s, mood.current, mood.take_gesture()))
             finally:
                 await sentences.put(None)
 
         async def consume():
             index = 0
             while (item := await sentences.get()) is not None:
-                sentence, emotion = item
+                sentence, emotion, gesture = item
                 spoken = clean_for_speech(sentence)
                 if not spoken:
                     continue
-                await self.speak(index, spoken, emotion)
+                await self.speak(index, spoken, emotion, gesture)
                 if index == 0:
                     log.info("first audio after %.0f ms", (time.perf_counter() - started) * 1000)
                 index += 1
@@ -264,7 +266,7 @@ class Session:
         line = (persona.welcome_back or "") if self.past else persona.greeting
         if line:
             self.conv.add_reply(line)       # context only; greetings aren't saved
-            await self.speak(0, line)
+            await self.speak(0, line, gesture="wave")   # wave hello
             await self.send(type="done", text=line)
 
 

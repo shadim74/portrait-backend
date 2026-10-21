@@ -199,11 +199,31 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     clip.tracks = clip.tracks.filter(t => !/^Bip01(_Footsteps)?\.quaternion$/.test(t.name));
     clips[name] = clip;
   }
-  const pick = prefix => Object.keys(clips).filter(n => n.includes(prefix)).map(n => mixer.clipAction(clips[n]));
-  // Idle = calm breathing only (the other idle clips shift weight and look around).
-  const breathe = pick('breathe');
-  const idleActions = breathe.length ? breathe : pick('idle'), talkActions = pick('talk');
-  let current = null;
+  const actionFor = name => clips[name] ? mixer.clipAction(clips[name]) : null;
+  const actions = names => names.map(actionFor).filter(Boolean);
+  const pick = part => Object.keys(clips).filter(n => n.includes(part)).map(actionFor);
+  // Idle = calm breathing only.
+  const idleActions = pick('breathe').length ? pick('breathe') : pick('idle');
+  // Talking style per mood. Each list has two clips so a long loop can
+  // crossfade into the other one instead of jumping back to its start.
+  const neutralTalk = actions(['talk_neutral_a', 'talk_neutral_b', 'talk_neutral_c']);
+  const TALK = {
+    neutral: neutralTalk,
+    happy: actions(['talk_happy', 'talk_neutral_a']),
+    surprised: actions(['talk_happy', 'talk_neutral_b']),
+    sad: actions(['talk_sad', 'talk_neutral_c']),
+    angry: actions(['talk_angry', 'talk_neutral_b']),
+    thinking: actions(['talk_neutral_c', 'talk_neutral_a']),
+  };
+  const anyTalk = pick('talk');
+  const talkFor = mood => TALK[mood]?.length ? TALK[mood] : neutralTalk.length ? neutralTalk : anyTalk;
+  // One-off gestures the AI can ask for with tags like [shrug].
+  const GESTURES = {};
+  for (const g of ['laugh', 'shrug', 'nod', 'shake', 'wave', 'think']) {
+    const a = actionFor('gesture_' + g);
+    if (a) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; GESTURES[g] = a; }
+  }
+  let current = null, mode = 'idle', talkMood = null, lastTalkSwitch = 0, gestureUntil = 0, listening = false, nextListenNod = 0;
   const fadeTo = (action, seconds = .7, randomStart = true) => {
     if (!action || action === current) return;
     action.reset();
@@ -344,11 +364,25 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     // Body: talking gestures while speaking (a short grace period bridges the
     // gap between sentences), then settle straight back into calm breathing.
     const shouldTalk = now - lastSpeech < 400;
-    if (shouldTalk !== talking) {
-      talking = shouldTalk;
-      if (talking && talkActions.length) fadeTo(randomOf(talkActions), .5);
-      else if (!talking && idleActions.length) fadeTo(randomOf(idleActions), .6);
+    if (mode === 'gesture' && now >= gestureUntil) mode = 'settle';
+    if (mode !== 'gesture') {
+      if (shouldTalk) {
+        // talk in the style of the current mood; switch when the mood changes
+        // (not too often) or when the clip is about to end
+        const want = TALK[emotion] ? emotion : 'neutral';
+        const ending = mode === 'talk' && current && current.getClip().duration - current.time < .6;
+        if (mode !== 'talk' || ending || (want !== talkMood && now - lastTalkSwitch > 2500)) {
+          const options = talkFor(want), others = options.filter(a => a !== current);
+          fadeTo(randomOf(others.length ? others : options), .5, mode !== 'talk');
+          mode = 'talk'; talkMood = want; lastTalkSwitch = now;
+        }
+      } else if (mode !== 'idle' && idleActions.length) {
+        fadeTo(randomOf(idleActions), .6); mode = 'idle';
+      }
     }
+    talking = shouldTalk;
+    // Listening: small nods now and then, as if following along.
+    if (listening && !talking && now > nextListenNod) { nodVel += .45 + Math.random() * .3; nextListenNod = now + 1800 + Math.random() * 1600; }
     mixer.update(dt);
     // Snapshot the animated pose of the bones we adjust below. The mixer only
     // rewrites a bone when its animated value changes, so our adjustments must
@@ -357,7 +391,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
 
     // Body language (see BEHAVIOURS). Not while asleep; while talking only
     // stance shifts, so his attention stays on the visitor.
-    if (!idle && now > nextAct && !act) {
+    if (!idle && !listening && mode !== 'gesture' && now > nextAct && !act) {
       const type = talking ? (Math.random() < .5 ? 'shift' : null) : pickBehaviour();
       const side = Math.random() < .5 ? -1 : 1;
       if (type === 'shift') stanceTarget = stance > .2 || stance < -.2 ? (Math.random() < .5 ? 0 : -Math.sign(stance)) : side;
@@ -471,6 +505,20 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     speak(el, visemes) { audio = el; timeline = visemes || null; tlIdx = 0; },
     /** Speech stopped or interrupted. */
     silence() { audio = null; timeline = null; },
+    /** Play a one-off gesture: laugh, shrug, nod, shake, wave, think. */
+    gesture(name) {
+      const a = GESTURES[name];
+      if (!a || frame.classList.contains('idle')) return;
+      if (a === current) current = null;           // allow repeating the same gesture
+      fadeTo(a, .35, false);
+      gestureUntil = performance.now() + Math.max(.6, a.getClip().duration - .4) * 1000;
+      mode = 'gesture'; act = null;
+      if (name === 'laugh') this.express('happy');
+    },
+    /** The visitor is talking (hands-free): nod along now and then. */
+    listen(on) { listening = !!on; nextListenNod = performance.now() + 900; },
+    /** The visitor finished a sentence: a small nod to show he got it. */
+    acknowledge() { nodVel += 1.1; },
     /** Show a facial expression: neutral, happy, sad, surprised, angry, thinking. */
     express(e) { if (EXPRESSIONS[e]) { emotion = e; lastExpressed = performance.now(); } },
     /** The expression he goes back to when quiet. */

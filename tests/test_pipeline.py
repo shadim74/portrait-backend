@@ -231,3 +231,25 @@ def test_speech_carries_emotion_and_tags_are_hidden():
         assert speech[0][1] == "happy" and speech[-1] == ("But I miss the old days.", "sad")
         shown = "".join(m["text"] for m in msgs if m["type"] == "token")
         assert "[" not in shown and msgs[-1]["text"] == "Oh, what a lovely question! But I miss the old days."
+
+
+# ---------- gestures ----------
+
+def test_emotion_filter_picks_up_gesture_tags():
+    f = EmotionFilter()
+    out = "".join(f.feed(t) for t in ["[happy] [sha", "ke head] No way. ", "[Laughs] Ha!"]) + f.flush()
+    assert out == "No way. Ha!"
+    assert f.take_gesture() == "laugh" and f.take_gesture() is None
+    assert f.current == "happy"
+
+
+def test_speech_carries_gesture_and_greeting_waves():
+    tokens = ["[thinking] [shrug] Honestly, ", "no idea who built it. ", "Ask Hollis."]
+    with make_client(tokens=tokens) as client, client.websocket_connect("/ws/headmaster") as ws:
+        ws.receive_json()
+        greeting = receive_until_done(ws)
+        assert greeting[0]["gesture"] == "wave"
+        ws.send_json({"type": "text", "text": "Who built the east wing?"})
+        speech = [m for m in receive_until_done(ws) if m["type"] == "speech"]
+        assert speech[0]["gesture"] == "shrug" and speech[0]["emotion"] == "thinking"
+        assert all(m["gesture"] is None for m in speech[1:])     # each gesture is used once
