@@ -154,7 +154,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   scene.add(obj);
 
   const bone = name => obj.getObjectByName(name);
-  const head = bone('Bip01_Head'), neck = bone('Bip01_Neck');
+  const head = bone('Bip01_Head'), neck = bone('Bip01_Neck'), chest = bone('Bip01_Spine2');
 
   // Eye contact: the eyeballs are moved by their own bones. Remember each
   // eye's rest rotation and which local direction points "forward", so we can
@@ -168,7 +168,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
   const _eyePos = new THREE.Vector3(), _cur = new THREE.Vector3(), _dir = new THREE.Vector3();
   const _wq = new THREE.Quaternion(), _pq = new THREE.Quaternion(), _dq = new THREE.Quaternion();
   const UP = new THREE.Vector3(0, 1, 0), _right = new THREE.Vector3();
-  const aimEyes = (gx, gy) => {
+  const aimEyes = (gx, gy, contact = 1) => {
     obj.updateMatrixWorld(true);
     for (const e of eyes) {
       e.bone.quaternion.copy(e.rest);
@@ -184,6 +184,7 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
       const angle = _cur.angleTo(_dir), max = .45;
       _dq.setFromUnitVectors(_cur, _dir);
       if (angle > max) _dq.slerp(new THREE.Quaternion(), 1 - max / angle);
+      if (contact < 1) _dq.slerp(new THREE.Quaternion(), 1 - contact);   // looking away: eyes go with the head
       e.bone.parent.getWorldQuaternion(_pq);
       e.bone.quaternion.copy(_pq.invert().multiply(_dq.multiply(_wq)));
     }
@@ -292,6 +293,41 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
 
   // face state
   let nextBlink = performance.now() + 1500, blinkStart = -1, doubleBlink = false;
+
+  // Body language: every few seconds while listening, one of these happens.
+  //   glance    - head turns to one side, as if something caught his eye
+  //   lookBack  - upper body and head turn to look over the shoulder
+  //   shift     - turns the body a little to one side and shifts weight; stays
+  //               there until the next shift
+  const BEHAVIOURS = { glance: { hold: [1.2, 2.2], weight: 5 }, lookBack: { hold: [1.2, 2], weight: 2 }, shift: { weight: 4 } };
+  let act = null, nextAct = performance.now() + 4000;
+  let stance = 0, stanceTarget = 0;                 // -1..1: body turned left/right
+  // Turn a bone around the world's up axis, about its own joint. Done with full
+  // matrices because some of these bones have mirrored axes, which breaks
+  // quaternion-only maths.
+  const _pw = new THREE.Matrix4(), _pwi = new THREE.Matrix4(), _r = new THREE.Matrix4(), _t = new THREE.Matrix4();
+  const _pos = new THREE.Vector3(), _scl = new THREE.Vector3();
+  const turnWorld = (b, yaw) => {
+    if (!b || !yaw) return;
+    b.updateWorldMatrix(true, false);
+    _pos.setFromMatrixPosition(b.matrixWorld);
+    _pw.copy(b.parent.matrixWorld); _pwi.copy(_pw).invert();
+    _r.makeTranslation(_pos.x, _pos.y, _pos.z)
+      .multiply(_t.makeRotationAxis(UP, yaw))
+      .multiply(_t.makeTranslation(-_pos.x, -_pos.y, -_pos.z));
+    // new local = parent^-1 * R * parent * local
+    _t.copy(_pwi).multiply(_r).multiply(_pw).multiply(b.matrix);
+    _t.decompose(b.position, b.quaternion, _scl);
+    b.updateMatrixWorld(true);
+  };
+  const poseBones = [head, neck, chest].filter(Boolean);
+  const posed = poseBones.map(() => [new THREE.Quaternion(), new THREE.Vector3()]);
+  const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  const pickBehaviour = () => {
+    const names = Object.keys(BEHAVIOURS), total = names.reduce((a, n) => a + BEHAVIOURS[n].weight, 0);
+    let r = Math.random() * total;
+    return names.find(n => (r -= BEHAVIOURS[n].weight) < 0) || 'glance';
+  };
   let gaze = { x: 0, y: 0 }, gazeTarget = { x: 0, y: 0 }, nextGaze = 0;
   let brow = 0, nod = 0, nodVel = 0, prevMouth = 0;
 
@@ -314,6 +350,35 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
       else if (!talking && idleActions.length) fadeTo(randomOf(idleActions), .6);
     }
     mixer.update(dt);
+    // Snapshot the animated pose of the bones we adjust below. The mixer only
+    // rewrites a bone when its animated value changes, so our adjustments must
+    // be undone after drawing or they would pile up frame after frame.
+    poseBones.forEach((b, i) => { posed[i][0].copy(b.quaternion); posed[i][1].copy(b.position); });
+
+    // Body language (see BEHAVIOURS). Not while asleep; while talking only
+    // stance shifts, so his attention stays on the visitor.
+    if (!idle && now > nextAct && !act) {
+      const type = talking ? (Math.random() < .5 ? 'shift' : null) : pickBehaviour();
+      const side = Math.random() < .5 ? -1 : 1;
+      if (type === 'shift') stanceTarget = stance > .2 || stance < -.2 ? (Math.random() < .5 ? 0 : -Math.sign(stance)) : side;
+      else if (type) {
+        const [a, b] = BEHAVIOURS[type].hold;
+        act = { type, side, start: now, hold: (a + Math.random() * (b - a)) * 1000 };
+        if (blinkStart < 0) blinkStart = now + 120;   // people blink as they turn their head
+      }
+      nextAct = now + (talking ? 6000 : 3500) + Math.random() * 6000;
+    }
+    stance = approach(stance, idle ? 0 : stanceTarget, .9, dt);
+    obj.rotation.y = stance * .32;                   // turn the whole body toward one side...
+    obj.position.x = stance * -5;                    // ...and shift weight the other way
+    let away = 0, lookYaw = 0, chestYaw = 0;
+    if (act) {
+      const t = now - act.start, inT = act.type === 'lookBack' ? 650 : 380, outT = 600;
+      away = t < inT ? ease(t / inT) : t < inT + act.hold ? 1 : ease(1 - (t - inT - act.hold) / outT);
+      if (t > inT + act.hold + outT || talking) { act = null; away = 0; }
+      else if (act.type === 'glance') { lookYaw = act.side * .5 * away; }
+      else { lookYaw = act.side * .6 * away; chestYaw = act.side * .45 * away; }
+    }
 
     // Lips -----------------------------------------------------------------
     const targets = Object.fromEntries(VISEMES.map(v => [v, 0]));
@@ -388,12 +453,15 @@ export async function mountAvatar(container, frame, model, restingMood = 'neutra
     nodVel += (-nod * 60 - nodVel * 9) * dt; nod += nodVel * dt;
     addTurn(head, nod * .12 + gaze.y * .05 + posture[0], gaze.x * .12 + posture[1], posture[2]);
     addTurn(neck, nod * .05, gaze.x * .05, 0);
-    aimEyes(gaze.x, gaze.y);                         // eyes on the visitor, after the head has moved
+    turnWorld(chest, chestYaw);                      // (not the neck: the shoulders hang off it)
+    turnWorld(head, lookYaw);
+    aimEyes(gaze.x, gaze.y, 1 - away);               // eyes on the visitor, after the head has moved
 
     for (const name of touched) morph(name, Math.min(1, face.get(name) || 0));
     face.clear();
 
     renderer.render(scene, camera);
+    poseBones.forEach((b, i) => { b.quaternion.copy(posed[i][0]); b.position.copy(posed[i][1]); });
     raf = requestAnimationFrame(loop);
   };
   raf = requestAnimationFrame(loop);
