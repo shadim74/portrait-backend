@@ -1,24 +1,30 @@
 """Talking-portrait backend.
 
-One WebSocket per visitor:  ws://host:8000/ws/{persona_id}
+One WebSocket per visitor:  ws://host:8000/ws/{persona_id}?visitor=<id>
+(visitor is optional: a random id the browser keeps, used to save chat history)
 
 Client -> server (JSON):
   {"type": "text",  "text": "Hello!"}
   {"type": "audio", "audio": "<base64 webm/wav>", "language": "en"}   # optional language
   {"type": "stop"}                                                    # interrupt reply
+  {"type": "clear_history"}                                           # forget this chat
 
 Server -> client (JSON):
   {"type": "ready",         "persona": {...}}
+  {"type": "history",       "messages": [{"role": "user"|"assistant", "content": "..."}]}  # returning visitor
   {"type": "transcription", "text": "..."}            # what we heard
   {"type": "token",         "text": "..."}            # live reply text
-  {"type": "speech", "index": 0, "text": "...", "audio": "<base64 wav>", "video": "<base64 mp4>|null"}
+  {"type": "speech", "index": 0, "text": "...", "audio": "<base64 wav>", "video": "<base64 mp4>|null",
+   "visemes": [[seconds, "aa"], ...]|null}          # mouth shapes for 3D lip-sync
   {"type": "done",          "text": "<full reply>"}
   {"type": "interrupted"}
   {"type": "error",         "message": "..."}
+  {"type": "history_cleared"}
 
-The reply is streamed sentence by sentence: while the LLM writes sentence 2,
-sentence 1 is already being turned into speech (and video), so the portrait
-starts talking long before the full answer exists.
+The reply is streamed in small pieces: the first few words go to speech right
+away, and while the LLM writes the next piece the previous one is already
+being turned into speech (and video), so the portrait starts talking long
+before the full answer exists.
 """
 import asyncio
 import base64
@@ -32,6 +38,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .config import settings
+from .history import HistoryStore, valid_visitor
 from .personas import Conversation, Persona, load_personas
 from .text_utils import SentenceSplitter, ThinkFilter, clean_for_speech
 
@@ -86,6 +94,8 @@ async def lifespan(app: FastAPI):
         app.state.engines = await asyncio.to_thread(load_engines)
     if not hasattr(app.state, "personas"):
         app.state.personas = load_personas()
+    if not hasattr(app.state, "history"):
+        app.state.history = HistoryStore(settings.history_db) if settings.history_db else None
     # GPU models aren't safe to call from several threads at once; one lock each.
     app.state.gpu_locks = {name: asyncio.Lock() for name in ("stt", "tts", "lipsync")}
     yield
@@ -114,13 +124,31 @@ async def personas():
 class Session:
     """One visitor talking to one portrait."""
 
-    def __init__(self, ws: WebSocket, persona: Persona):
+    def __init__(self, ws: WebSocket, persona: Persona, visitor: str | None = None):
         self.ws = ws
         self.conv = Conversation(persona)
         self.engines: Engines = ws.app.state.engines
         self.locks = ws.app.state.gpu_locks
         self.send_lock = asyncio.Lock()
         self.turn: asyncio.Task | None = None
+        # Saved history: only for visitors that identify themselves.
+        store = ws.app.state.history
+        self.store = store if store and valid_visitor(visitor) else None
+        self.visitor = visitor
+        self.past: list[dict] = []
+        if self.store:
+            self.past = self.store.recent(visitor, persona.id, limit=50)
+            self.conv.history = [dict(m) for m in self.past[-settings.max_history:]]
+
+    def save(self, role: str, content: str):
+        if self.store:
+            self.store.add(self.visitor, self.conv.persona.id, role, content)
+
+    def clear_history(self):
+        if self.store:
+            self.store.clear(self.visitor, self.conv.persona.id)
+        self.conv.history.clear()
+        self.past = []
 
     async def send(self, **msg):
         async with self.send_lock:
@@ -151,6 +179,9 @@ class Session:
         sentences: asyncio.Queue[str | None] = asyncio.Queue()
         full_reply: list[str] = []
 
+        messages = self.conv.messages_for(user_text)
+        self.save("user", user_text)
+
         async def produce():
             splitter = SentenceSplitter()
             think = ThinkFilter()  # hidden reasoning must never be spoken
@@ -164,7 +195,7 @@ class Session:
                     await sentences.put(s)
 
             try:
-                async for token in self.engines.llm.stream(self.conv.messages_for(user_text)):
+                async for token in self.engines.llm.stream(messages):
                     await emit(think.feed(token))
                 await emit(think.flush())
                 for s in splitter.flush():
@@ -187,7 +218,9 @@ class Session:
             await asyncio.gather(produce(), consume())
         finally:
             # Remember what was said, even if the visitor interrupted midway.
-            self.conv.add_reply("".join(full_reply).strip())
+            said = "".join(full_reply).strip()
+            self.conv.add_reply(said)
+            self.save("assistant", said)
         await self.send(type="done", text="".join(full_reply).strip())
 
     async def handle_turn(self, msg: dict):
@@ -219,10 +252,13 @@ class Session:
                 pass
 
     async def greet(self):
-        if self.conv.persona.greeting:
-            self.conv.add_reply(self.conv.persona.greeting)
-            await self.speak(0, self.conv.persona.greeting)
-            await self.send(type="done", text=self.conv.persona.greeting)
+        persona = self.conv.persona
+        # A returning visitor gets "welcome back" instead of the first-meeting line.
+        line = (persona.welcome_back or "") if self.past else persona.greeting
+        if line:
+            self.conv.add_reply(line)       # context only; greetings aren't saved
+            await self.speak(0, line)
+            await self.send(type="done", text=line)
 
 
 @app.websocket("/ws/{persona_id}")
@@ -234,16 +270,21 @@ async def portrait_socket(ws: WebSocket, persona_id: str):
         await ws.close()
         return
 
-    session = Session(ws, persona)
+    session = Session(ws, persona, ws.query_params.get("visitor"))
     await session.send(type="ready", persona=persona_info(persona))
+    if session.past:
+        await session.send(type="history", messages=session.past)
     session.turn = asyncio.create_task(session.greet())
     try:
         while True:
             msg = await ws.receive_json()
-            if msg.get("type") in ("text", "audio", "stop"):
+            if msg.get("type") in ("text", "audio", "stop", "clear_history"):
                 await session.cancel_turn()          # new input = barge-in
             if msg.get("type") in ("text", "audio"):
                 session.turn = asyncio.create_task(session.handle_turn(msg))
+            elif msg.get("type") == "clear_history":
+                session.clear_history()
+                await session.send(type="history_cleared")
     except WebSocketDisconnect:
         pass
     finally:

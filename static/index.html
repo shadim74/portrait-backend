@@ -24,6 +24,7 @@
   #hfstatus.hearing { color: #9ecbff; }
   #log { background: #120f0d; border: 1px solid #3a3029; border-radius: 6px; padding: 1rem; height: 260px; overflow-y: auto; white-space: pre-wrap; }
   .you { color: #9ecbff; } .them { color: #f0d9a8; } .sys { color: #888; font-size: .9em; }
+  .past { opacity: .6; }
 
   /* --- the portrait --- */
   .stage { display: flex; flex-direction: column; align-items: center; margin: 1.5rem 0; }
@@ -83,6 +84,7 @@
 <div class="row">
   <select id="persona"></select>
   <button id="connect">Connect</button>
+  <button id="clear" title="Forget this conversation">Clear history</button>
 </div>
 
 <div class="stage">
@@ -224,7 +226,8 @@ function connect() {
   if (ws) { ws.onclose = null; ws.close(); }
   stopPlayback();
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws/${$('persona').value}`);
+  $('log').innerHTML = '';
+  ws = new WebSocket(`${proto}://${location.host}/ws/${$('persona').value}?visitor=${visitorId}`);
   let replyDiv = null;
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
@@ -235,6 +238,8 @@ function connect() {
     if (m.type === 'done') replyDiv = null;
     if (m.type === 'interrupted') { log('sys', '(interrupted)'); replyDiv = null; }
     if (m.type === 'error') log('sys', `Error: ${m.message}`);
+    if (m.type === 'history') showHistory(m.messages);
+    if (m.type === 'history_cleared') { $('log').innerHTML = ''; log('sys', 'History cleared'); }
   };
   ws.onclose = () => { log('sys', 'Disconnected'); setAwake(false); stopHandsFree(); };
 }
@@ -386,6 +391,31 @@ async function stopHandsFree() {
 }
 
 $('handsfree').onclick = () => (handsFree ? stopHandsFree() : startHandsFree());
+// --- chat history -----------------------------------------------------------
+// A random id kept in this browser, so the portrait remembers you next time.
+const visitorId = (() => {
+  const make = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try {
+    let id = localStorage.getItem('portraitVisitor');
+    if (!id) { id = make(); localStorage.setItem('portraitVisitor', id); }
+    return id;
+  } catch { return make(); }      // storage blocked: history lasts for this page only
+})();
+
+function showHistory(messages) {
+  log('sys', '— earlier conversation —');
+  for (const m of messages) {
+    const div = m.role === 'user' ? log('you', `You: ${m.content}`) : log('them', m.content);
+    div.classList.add('past');
+  }
+  log('sys', '— today —');
+}
+
+$('clear').onclick = () => {
+  if (!isOpen()) { log('sys', 'Connect first'); return; }
+  if (!confirm('Forget your whole conversation with this portrait?')) return;
+  stopPlayback(); ws.send(JSON.stringify({ type: 'clear_history' }));
+};
 $('connect').onclick = connect;
 $('persona').onchange = () => showPersona(personas.find(p => p.id === $('persona').value));
 $('text').onkeydown = e => { if (e.key === 'Enter') sendText(); };

@@ -4,6 +4,7 @@ import base64
 
 from fastapi.testclient import TestClient
 
+from app.history import HistoryStore
 from app.main import Engines, app
 from app.personas import Persona
 from app.text_utils import SentenceSplitter, ThinkFilter, clean_for_speech
@@ -62,7 +63,9 @@ def make_client(llm_delay=0.0):
     app.state.engines = Engines(stt=FakeSTT(), llm=FakeLLM(llm_delay), tts=FakeTTS(), lipsync=FakeLipSync())
     app.state.personas = {"headmaster": Persona(id="headmaster", name="Headmaster",
                                                 system_prompt="You are a headmaster.",
-                                                greeting="Welcome, visitor!")}
+                                                greeting="Welcome, visitor!",
+                                                welcome_back="Back again?")}
+    app.state.history = HistoryStore(":memory:")
     return TestClient(app)
 
 
@@ -149,3 +152,51 @@ def test_barge_in_interrupts_reply():
 def test_unknown_persona():
     with make_client() as client, client.websocket_connect("/ws/nobody") as ws:
         assert ws.receive_json()["type"] == "error"
+
+
+# ---------- saved chat history ----------
+
+VISITOR = "test-visitor-1234"
+
+
+def test_history_is_remembered_across_connections():
+    with make_client() as client:
+        with client.websocket_connect(f"/ws/headmaster?visitor={VISITOR}") as ws:
+            assert ws.receive_json()["type"] == "ready"
+            first = receive_until_done(ws)                 # first visit: normal greeting
+            assert first[0]["text"] == "Welcome, visitor!"
+            ws.send_json({"type": "text", "text": "Who are you?"})
+            receive_until_done(ws)
+
+        with client.websocket_connect(f"/ws/headmaster?visitor={VISITOR}") as ws:
+            assert ws.receive_json()["type"] == "ready"
+            history = ws.receive_json()
+            assert history["type"] == "history"
+            assert history["messages"] == [
+                {"role": "user", "content": "Who are you?"},
+                {"role": "assistant", "content": "I am the old headmaster. I like sweets very much."},
+            ]
+            assert receive_until_done(ws)[0]["text"] == "Back again?"   # returning visitor
+
+
+def test_clear_history():
+    with make_client() as client:
+        with client.websocket_connect(f"/ws/headmaster?visitor={VISITOR}") as ws:
+            ws.receive_json(); receive_until_done(ws)
+            ws.send_json({"type": "text", "text": "Remember me"})
+            receive_until_done(ws)
+            ws.send_json({"type": "clear_history"})
+            assert ws.receive_json()["type"] == "history_cleared"
+
+        with client.websocket_connect(f"/ws/headmaster?visitor={VISITOR}") as ws:
+            ws.receive_json()
+            assert receive_until_done(ws)[0]["text"] == "Welcome, visitor!"  # no history message, fresh greeting
+
+
+def test_no_visitor_id_means_nothing_saved():
+    with make_client() as client:
+        with client.websocket_connect("/ws/headmaster") as ws:
+            ws.receive_json(); receive_until_done(ws)
+            ws.send_json({"type": "text", "text": "Hi"})
+            receive_until_done(ws)
+        assert client.app.state.history.recent("", "headmaster") == []

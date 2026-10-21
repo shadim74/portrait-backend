@@ -91,6 +91,15 @@ Voices: the first letter is the language (`a` US English, `b` UK English) and
 the second is gender (`f`/`m`). Examples: `af_heart`, `af_bella`, `am_michael`,
 `bf_emma`, `bm_george`, `bm_fable`. See Kokoro's VOICES list for all of them.
 
+## Chat history
+
+Conversations are saved in `data/history.db` (SQLite; change with
+`HISTORY_DB`, or set it empty to save nothing). Each browser keeps a random
+visitor id, so when you come back the portrait shows your earlier
+conversation, greets you with its `welcome_back` line and remembers what was
+said (the LLM sees the last `MAX_HISTORY` messages). "Clear history" on the
+test page forgets the conversation with that portrait.
+
 ## The avatar (browser side)
 
 The test page shows each character as a framed painting and animates it with
@@ -161,6 +170,7 @@ app/llm.py         streaming chat client (Ollama / vLLM / LM Studio)
 app/tts.py         Kokoro text-to-speech
 app/lipsync.py     lip-sync interface + MuseTalk stub
 app/personas.py    characters and conversation memory
+app/history.py     saved chat history (SQLite)
 app/text_utils.py  sentence splitting, <think> removal, speech cleanup
 app/visemes.py     phonemes -> mouth-shape timeline for 3D lip-sync
 static/index.html  browser test console + animated portrait (lips, blink, 3D tilt)

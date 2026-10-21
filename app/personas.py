@@ -20,6 +20,7 @@ class Persona:
     voice: str = "af_heart"
     portrait: str = ""
     greeting: str = ""
+    welcome_back: str = ""   # said instead of the greeting to a returning visitor
     # Optional, for PNG/JPG portraits: where the mouth is, in % of the image,
     # e.g. {"x": 44, "y": 55, "w": 12, "h": 9}. The page moves that area as a jaw.
     mouth: dict | None = None

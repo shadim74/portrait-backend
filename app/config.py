@@ -32,7 +32,8 @@ class Settings:
     lipsync_engine: str = os.getenv("LIPSYNC_ENGINE", "none")
 
     personas_file: str = os.getenv("PERSONAS_FILE", "personas.json")
-    max_history: int = int(os.getenv("MAX_HISTORY", "20"))  # messages kept per session
+    max_history: int = int(os.getenv("MAX_HISTORY", "20"))  # messages the LLM sees per turn
+    history_db: str = os.getenv("HISTORY_DB", "data/history.db")  # saved chats ("" = don't save)
 
     def __post_init__(self):
         ct = os.getenv("COMPUTE_TYPE") or _default_compute_type(self.device)

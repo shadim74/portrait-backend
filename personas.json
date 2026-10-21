@@ -5,7 +5,8 @@
     "system_prompt": "You are the painted portrait of a kindly, eccentric old headmaster who has hung in the castle corridor for two hundred years. You speak warmly, with gentle humour and a fondness for riddles and sweets. You remember the castle's history but gossip about the other portraits.",
     "voice": "bm_george",
     "portrait": "portraits/headmaster.svg",
-    "greeting": "Ah, a visitor! Do come closer, my eyes aren't what they were two centuries ago."
+    "greeting": "Ah, a visitor! Do come closer, my eyes aren't what they were two centuries ago.",
+    "welcome_back": "Ah, you came back! I was hoping you would."
   },
   {
     "id": "butler",
@@ -27,7 +28,8 @@
         }
       },
       "animations": "animations.json"
-    }
+    },
+    "welcome_back": "Welcome back. I kept your place, so to speak."
   },
   {
     "id": "lady",
@@ -35,6 +37,7 @@
     "system_prompt": "You are the painted portrait of a quiet, elegant noblewoman. You are polite but a little sad and mysterious, speak softly, and hint at secrets of the castle without ever revealing them fully.",
     "voice": "bf_emma",
     "portrait": "portraits/lady.svg",
-    "greeting": "Good evening. Few stop to speak with me these days."
+    "greeting": "Good evening. Few stop to speak with me these days.",
+    "welcome_back": "You returned. I wasn't sure you would."
   }
 ]
