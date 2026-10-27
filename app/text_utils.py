@@ -70,9 +70,7 @@ class SentenceSplitter:
 
     def _after_words(self, n: int) -> int:
         """Index just after the n-th complete word (one followed by a space), or 0."""
-        count = 0
-        for m in re.finditer(r"\S+\s+", self.buffer):
-            count += 1
+        for count, m in enumerate(re.finditer(r"\S+\s+", self.buffer), start=1):
             if count == n:
                 return m.end()
         return 0

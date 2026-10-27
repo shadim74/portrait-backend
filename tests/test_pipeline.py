@@ -7,8 +7,12 @@ from fastapi.testclient import TestClient
 from app.history import HistoryStore
 from app.main import Engines, app
 from app.personas import Persona
-from app.text_utils import EmotionFilter, SentenceSplitter, ThinkFilter, clean_for_speech
-
+from app.text_utils import (
+    EmotionFilter,
+    SentenceSplitter,
+    ThinkFilter,
+    clean_for_speech,
+)
 
 # ---------- pure helpers ----------
 
@@ -108,7 +112,7 @@ def test_splitter_starts_early_on_first_clause():
 
 def test_splitter_early_chunks_without_pause_cut_after_words():
     s = SentenceSplitter()
-    words = "Well then I suppose the oldest thing in this house would have to be the clock in the hall".split()
+    words = ["Well", "then", "I", "suppose", "the", "oldest", "thing", "in", "this", "house", "would", "have", "to", "be", "the", "clock", "in", "the", "hall"]
     out = []
     for w in words:
         out += s.feed(w + " ")

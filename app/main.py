@@ -258,8 +258,10 @@ class Session:
             self.turn.cancel()
             try:
                 await self.turn
-            except (asyncio.CancelledError, Exception):
-                pass
+            except asyncio.CancelledError:
+                pass   # expected: we just cancelled it
+            except Exception:   # turn errors are already reported to the client
+                log.debug("cancelled turn raised", exc_info=True)
 
     async def greet(self):
         persona = self.conv.persona
