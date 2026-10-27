@@ -25,7 +25,7 @@ class TextToSpeech:
     def __init__(self):
         from kokoro import KPipeline  # imported lazily: heavy
 
-        self._pipelines: dict[str, "KPipeline"] = {}
+        self._pipelines: dict[str, KPipeline] = {}
         self._KPipeline = KPipeline
 
     def _pipeline(self, voice: str):

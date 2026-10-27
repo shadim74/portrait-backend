@@ -1,5 +1,5 @@
 """Streaming chat with any OpenAI-compatible local server (Ollama, vLLM, LM Studio)."""
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from openai import AsyncOpenAI
 

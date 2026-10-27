@@ -1,0 +1,10 @@
+# Light dependencies for CI: tests and lint only.
+# Leaves out faster-whisper and kokoro (they pull in PyTorch); the tests use fake models.
+# Keep versions in step with requirements.txt.
+fastapi>=0.115
+openai>=1.40
+numpy
+python-dotenv
+pytest
+httpx
+ruff==0.17.3
