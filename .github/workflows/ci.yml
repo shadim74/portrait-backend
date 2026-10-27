@@ -23,4 +23,4 @@ jobs:
         run: ruff check .
 
       - name: Tests (pytest)
-        run: pytest -q
+        run: python -m pytest -q   # "python -m" lets tests import the app/ folder
